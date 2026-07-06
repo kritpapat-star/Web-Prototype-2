@@ -1,0 +1,9 @@
+# dependencies / build output
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# env — ห้าม commit secret (ดู SECURITY.md) — ใช้ .env.example เป็นแบบ
+.env
+.env.local

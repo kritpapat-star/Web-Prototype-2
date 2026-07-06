@@ -1,0 +1,621 @@
+/* apps/web/src/app/globals.css — สไตล์กลางของเว็บ (โครง Be Connected + ปฏิทิน + แผงแผนงาน) */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f7f7fb;
+  color: #1f2333;
+  font-family: "Leelawadee UI", "Segoe UI", system-ui, sans-serif;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+/* ---------- โครงหน้า: sidebar + เนื้อหา ---------- */
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 236px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #ebebf2;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  padding: 26px 22px 18px;
+  font-size: 21px;
+  font-weight: 800;
+  color: #171340;
+  letter-spacing: -0.3px;
+}
+
+.nav {
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #6f7280;
+}
+
+.nav-item .bullet {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #c9cad6;
+  flex-shrink: 0;
+}
+
+.nav-item.active {
+  background: #ecebfb;
+  color: #262156;
+  font-weight: 700;
+}
+
+.nav-item.active .bullet {
+  background: #5f51e3;
+}
+
+.nav-item.disabled {
+  cursor: default;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid #ebebf2;
+  padding: 14px 16px;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #23252f;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.user-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1f2333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-role {
+  font-size: 12px;
+  color: #9a9cab;
+}
+
+.logout-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 0;
+  border: 1px solid #e5e5ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #6f7280;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.logout-btn:hover {
+  color: #b91c1c;
+  border-color: #f3caca;
+}
+
+/* ---------- แถบบนของเนื้อหา ---------- */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid #ebebf2;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #1c1f2e;
+}
+
+.bell-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: #fff;
+  border: 1px solid #e5e5ee;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #2a2d3a;
+}
+
+.bell-btn:hover {
+  background: #f4f4fa;
+}
+
+.page {
+  padding: 22px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ---------- banner สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน ---------- */
+
+.today-banner {
+  background: #fff;
+  border: 1px solid #e7e7f0;
+  border-left: 4px solid #6d5ce8; /* แถบเน้นให้เด่นกว่าการ์ดอื่น — เป็น banner ของวันนี้ */
+  border-radius: 14px;
+  padding: 18px 22px 20px;
+}
+
+.banner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.banner-head h2 {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 800;
+  color: #1c1f2e;
+}
+
+.banner-date {
+  font-size: 12.5px;
+  color: #8a8da0;
+  margin-top: 2px;
+}
+
+.sum-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ป้ายเล็กบนชื่อแผน บอกว่าเป็นงานค้างจากวันก่อน */
+.carry-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1.5px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.btn-sm {
+  padding: 6px 13px;
+  font-size: 12.5px;
+}
+
+.dialog-note {
+  margin: 0;
+  font-size: 13px;
+  color: #4b4e5c;
+}
+
+.field textarea {
+  padding: 9px 11px;
+  border: 1px solid #d9d9e3;
+  border-radius: 9px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+/* ---------- แถบเลื่อนเดือน ---------- */
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.month-nav h2 {
+  margin: 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #1c1f2e;
+}
+
+.month-nav button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  color: #4b4e5c;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.month-nav button:hover {
+  background: #ececf4;
+}
+
+/* ---------- ปฏิทินเดือน ---------- */
+
+.cal-card {
+  background: #fff;
+  border: 1px solid #e7e7f0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.cal-head {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid #efeff5;
+}
+
+.cal-head > div {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #55586a;
+}
+
+.cal-head > .dow-sun {
+  color: #dc2626;
+}
+
+.cal-head > .dow-sat {
+  color: #6250e5;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cal-cell {
+  min-height: 106px;
+  padding: 8px 8px 10px;
+  border-right: 1px solid #f0f0f6;
+  border-bottom: 1px solid #f0f0f6;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.cal-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.cal-cell.empty-cell {
+  cursor: default;
+}
+
+/* วันที่เลือกอยู่ = พื้นม่วงอ่อน / วันนี้ = ป้ายเลขม่วง */
+.cal-cell.selected {
+  background: #f1effe;
+}
+
+.day-num {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 13px;
+  color: #55586a;
+  border-radius: 8px;
+}
+
+.cal-cell.today .day-num {
+  background: #6d5ce8;
+  color: #fff;
+  font-weight: 700;
+}
+
+.pill {
+  display: block;
+  margin-top: 5px;
+  padding: 2.5px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.pill-more {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #8a8da0;
+  text-align: center;
+}
+
+/* ---------- แผงแผนงานของวันที่เลือก ---------- */
+
+.day-panel {
+  background: #fff;
+  border: 1px solid #e7e7f0;
+  border-radius: 14px;
+  padding: 18px 22px 20px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 800;
+  color: #1c1f2e;
+}
+
+.btn-primary {
+  background: #6d5ce8;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #5b49d6;
+}
+
+.btn-primary:disabled {
+  background: #b1a8f0;
+  cursor: default;
+}
+
+.empty-note {
+  margin: 16px 0 4px;
+  color: #a0a3b1;
+  font-size: 14px;
+}
+
+.plan-list {
+  margin-top: 10px;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f1f6;
+  flex-wrap: wrap;
+}
+
+.plan-row:last-child {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.plan-main {
+  flex: 1;
+  min-width: 200px;
+}
+
+.plan-name {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.plan-sub {
+  font-size: 12.5px;
+  color: #8a8da0;
+  margin-top: 2px;
+}
+
+.plan-delay {
+  font-size: 12.5px;
+  color: #c2410c;
+  margin-top: 2px;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- modal เพิ่มแผน ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 60, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h3 {
+  margin: 0 0 2px;
+  font-size: 17px;
+}
+
+.field {
+  font-size: 13px;
+  color: #4b4e5c;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field input {
+  padding: 9px 11px;
+  border: 1px solid #d9d9e3;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.field input:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-row .field {
+  flex: 1;
+}
+
+.form-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-ghost {
+  background: #fff;
+  border: 1px solid #e0e0ea;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  cursor: pointer;
+  color: #4b4e5c;
+}
+
+.btn-ghost:hover {
+  background: #f5f5fa;
+}
+
+/* ---------- สรุปงานประจำวัน ---------- */
+
+.sum-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.sum-tile {
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.sum-count {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.sum-label {
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+.sum-group {
+  margin-top: 16px;
+}
+
+.sum-group-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* สถานะโหลดกลางจอ */
+.center-note {
+  padding: 40px;
+  text-align: center;
+  color: #8a8da0;
+}

@@ -1,0 +1,51 @@
+// Be Connected — My Work module (WorkPlan)
+// Schema locked: 1:1 plan/tracking merged into single WorkPlan table
+// jobId is a plain string for now — Job relation will be added later
+// + auth fields (username, passwordHash) สำหรับ auth แบบ JWT ออกเองที่ API (ดู routers/auth.ts)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CEO
+  ENGINEER
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String // เก็บ bcrypt hash เท่านั้น ห้ามเก็บ plaintext
+  name         String
+  role         Role
+  color        String // สีประจำตัวบนปฏิทินรวมของ CEO เช่น "#0ea5e9"
+  workPlans    WorkPlan[]
+
+  @@map("users")
+}
+
+model WorkPlan {
+  id               String    @id @default(cuid())
+  jobId            String // อ้างถึง Job — จะเติม relation ทีหลัง
+  userId           String
+  name             String
+  startDate        DateTime  @db.Date // แผนเริ่ม
+  endDate          DateTime  @db.Date // แผนจบ
+  actStart         DateTime? // เริ่มจริง
+  actEnd           DateTime? // จบจริง
+  delayStartReason String? // บังคับกรอกเมื่อ actStart > startDate (เช็คที่ tRPC)
+  delayEndReason   String? // บังคับกรอกเมื่อ actEnd > endDate (เช็คที่ tRPC)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, startDate])
+  @@index([startDate, endDate]) // สำหรับ query ปฏิทินรวมของ CEO
+  @@map("work_plans")
+}

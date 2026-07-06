@@ -1,0 +1,54 @@
+# docker-compose.yml — architecture แบบ B: 3 containers
+# web (Next.js) → api (Fastify+tRPC+Prisma) → db (PostgreSQL)
+# มีแค่ api ที่เห็น DATABASE_URL — web ไม่มีทางแตะ DB
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: beconnected
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: erp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # ไม่เปิด ports ออกข้างนอก — คุยกันใน docker network เท่านั้น
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beconnected -d erp"]
+      interval: 5s
+      retries: 5
+
+  api:
+    build:
+      # ต้อง build จาก root — pnpm workspace ต้องเห็น pnpm-lock.yaml + workspace.yaml
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://beconnected:${DB_PASSWORD}@db:5432/erp
+      JWT_SECRET: ${JWT_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN} # เช่น https://erp.beconnected.co.th
+      API_PORT: 4000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000" # หรือซ่อนหลัง reverse proxy (nginx/traefik) แล้วตัด ports ออก
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 10s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* ถูก bake ตอน build → ต้องส่งเป็น build arg (ใส่ environment ไม่มีผล)
+        # และเป็น URL ที่ "browser" มองเห็น (โดเมนจริง) ไม่ใช่ http://api:4000
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL} # เช่น https://api.beconnected.co.th/trpc
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
