@@ -1,6 +1,6 @@
 # TASK.md — สถานะงาน
 
-> อัปเดตล่าสุด: 6 ก.ค. 2026
+> อัปเดตล่าสุด: 7 ก.ค. 2026
 > กติกา: งานเสร็จให้ย้ายลง Done พร้อมวันที่ / งานใหม่เข้า Backlog ก่อนเสมอ
 
 ## ✅ Done
@@ -50,6 +50,20 @@
 - [x] Job ID รันเลขอัตโนมัติ — 6 ก.ค. 2026: Postgres sequence `job_id_seq`
       (migration `20260706000000`) → `JOB-001`, `JOB-002`, … ตัด `jobId` ออกจาก input `create`
       โหมดแก้ไขโชว์ read-only — user ไม่กรอก/แก้ไม่ได้ (บันทึกใน ARCHITECTURE.md + API.md)
+- [x] แถบ multi-day ต่อเนื่องในปฏิทิน — 7 ก.ค. 2026: แผนหลายวันเป็นแถบยาวข้ามวัน
+      แบบ Google Calendar ตัดแบ่งที่ขอบสัปดาห์ (ปฏิทินเปลี่ยนเป็นแถวสัปดาห์ `.cal-week`
+      แถบวางทับด้วย grid-column span) — lane assignment เป็น pure function
+      `lib/calendar-lanes.ts` + unit test; ขอบแถบมนเฉพาะจุดเริ่ม/จบจริง เคสคร่อมเดือนขอบเรียบ
+- [x] ประเภทงาน (`type`) + หน้า "ไซต์งาน" — 7 ก.ค. 2026: เพิ่ม enum `PlanType` (SOLAR/CCTV/NETWORK)
+      และคอลัมน์ `type` (nullable) ใน WorkPlan — **migration additive** ไม่ล้างข้อมูล
+      (`20260707064110_add_workplan_type`: สร้าง enum + คอลัมน์ + backfill ตาม prefix `jobId`
+      JOB-CCTV/SOLAR/NET-*); seed เปลี่ยนเป็น **idempotent upsert** (id คงที่ `seed-plan-NN` +
+      key `username` — รันซ้ำไม่ลบ/ไม่ duplicate) พร้อมใส่ `type` ทุกแผน
+      ฝั่ง API: `planFields`/`monthInput` รับ `type?` + `list` filter `type` (create/update
+      ส่งต่อผ่าน spread อัตโนมัติ) ฝั่ง web: `lib/plan-types.ts` (`PLAN_TYPE_META`) +
+      หน้าใหม่ `/sites` (filter chip ประเภท + chip สถานะ, ดึง `workPlan.list`) + dropdown
+      ประเภทใน PlanModal + chip ประเภทใน dashboard (CEO เห็นทุกคน / Engineer เฉพาะตัวเอง)
+      เป็นการทำ field `type` จริงที่เคยทำนายไว้ใน CONTEXT.md ("เพิ่มทีหลังได้โดยไม่พังโครง")
 
 ## 🔨 Doing
 
@@ -57,11 +71,11 @@
 
 ## ⏭️ Next (เรียงตามลำดับแนะนำ)
 
-1. [ ] เปิด login กลับ: ลบ DEV BYPASS ทั้ง 3 จุด (ก่อน demo/deploy ทุกกรณี — ดู SECURITY.md)
+1. [ ] เปิด login กลับ: ลบ DEV BYPASS ทั้ง 4 จุด (ก่อน demo/deploy ทุกกรณี — ดู SECURITY.md)
+   `apps/api/src/trpc.ts` + `apps/web/src/app/page.tsx` + `dashboard/page.tsx` + `sites/page.tsx`
 2. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` แล้ว — เหลือ dropdown ฝั่งเว็บ)
 3. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
-4. [ ] แถบ multi-day ต่อเนื่องในปฏิทิน (ตอนนี้แผนหลายวันแสดงเป็น pill ซ้ำทุกวันในช่วง)
-5. [ ] build ทดสอบ docker image ทั้งคู่จริง (`docker compose build`) — Dockerfile เขียนแล้วแต่ยังไม่เคย build
+4. [ ] build ทดสอบ docker image ทั้งคู่จริง (`docker compose build`) — Dockerfile เขียนแล้วแต่ยังไม่เคย build
 
 ## 📦 Backlog
 

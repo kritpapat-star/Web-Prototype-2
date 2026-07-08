@@ -7,3 +7,6 @@ dist/
 # env — ห้าม commit secret (ดู SECURITY.md) — ใช้ .env.example เป็นแบบ
 .env
 .env.local
+
+# AI tool workspace
+.kilo/

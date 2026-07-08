@@ -14,8 +14,10 @@ import { dateOnlyICT } from "../lib/dates";
 // ---------- zod schemas ----------
 
 // jobId ไม่รับจาก client แล้ว — API gen เลขรันเอง (JOB-001, JOB-002, …) ตอน create
+// type เป็นประเภทงาน (SOLAR/CCTV/NETWORK) — optional, เลือกจาก dropdown ตอนสร้าง/แก้
 const planFields = z.object({
   name: z.string().min(1, "ต้องระบุชื่อแผนงาน").max(200),
+  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
 });
@@ -24,6 +26,14 @@ const monthInput = z.object({
   year: z.number().int().min(2020).max(2100),
   month: z.number().int().min(1).max(12), // 1-12
   userId: z.string().optional(), // CEO ใช้ filter รายคน / Engineer ห้ามส่ง
+  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(), // filter ตามประเภทงาน (หน้าไซต์งาน)
+});
+
+// ค้นหาข้ามเดือน (หน้าไซต์งาน) — q ค้นชื่อแผน + Job ID, type กรองร่วม (optional)
+// แยกจาก monthInput เพื่อไม่ให้กระทบ window รายเดือนของ list (ใช้กับปฏิทิน dashboard ด้วย)
+const searchInput = z.object({
+  q: z.string().trim().min(2, "พิมพ์อย่างน้อย 2 ตัวอักษร"),
+  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(),
 });
 
 // ---------- router ----------
@@ -52,6 +62,7 @@ export const workPlanRouter = router({
         // แผนที่ "ทับ" กับเดือนที่ดู: startDate ≤ สิ้นเดือน AND endDate ≥ ต้นเดือน
         startDate: { lte: monthEnd },
         endDate: { gte: monthStart },
+        ...(input.type ? { type: input.type } : {}), // filter ตามประเภทงาน (หน้าไซต์งาน)
       },
       include: {
         user: { select: { id: true, name: true, color: true } }, // แต้มสีปฏิทินรวม
@@ -60,6 +71,34 @@ export const workPlanRouter = router({
     });
   }),
 
+  // ============================================================
+  // SEARCH — ค้นหาแผนงานข้ามเดือน (หน้าไซต์งาน)
+  //   ค้นจาก name + jobId (case-insensitive contains)
+  //   type filter ใช้ร่วมกับผลค้นหาได้
+  //   Engineer: เห็นเฉพาะของตัวเอง / CEO: เห็นทุกคน (RBAC เหมือน list)
+  //   ไม่จำกัดเดือน / ไม่จำกัดจำนวนผลลัพธ์
+  // ============================================================
+  search: protectedProcedure.input(searchInput).query(async ({ ctx, input }) => {
+    // กติกา RBAC เหมือน list: Engineer ล็อกเป็น id ตัวเองเสมอ / CEO เห็นทุกคน
+    const userFilter = ctx.user.role === "ENGINEER" ? { userId: ctx.user.sub } : {};
+
+    const q = input.q;
+
+    return ctx.prisma.workPlan.findMany({
+      where: {
+        ...userFilter,
+        ...(input.type ? { type: input.type } : {}),
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { jobId: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        user: { select: { id: true, name: true, color: true } }, // shape เดียวกับ list → render plan-row ซ้ำได้
+      },
+      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    });
+  }),
   // ============================================================
   // TODO — banner "สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน"
   //   คืน: แผนที่ทับวันนี้ + แผนค้างจากวันก่อน (เลยช่วงแผนแล้วยังไม่ปิดงาน)

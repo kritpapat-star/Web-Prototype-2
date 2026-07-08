@@ -43,6 +43,7 @@ Error format: `TRPCError` — `code` เป็นมาตรฐาน tRPC, `me
 | `year` | int 2020–2100 | |
 | `month` | int 1–12 | |
 | `userId` | string? | **CEO เท่านั้น** ที่มีผล — Engineer ถูกล็อกเป็นตัวเองเสมอ |
+| `type` | "SOLAR"\|"CCTV"\|"NETWORK"? | filter ตามประเภทงาน (หน้าไซต์งาน) — ไม่ส่ง = ทุกประเภท |
 
 **เงื่อนไข query:** interval overlap — `startDate ≤ สิ้นเดือน AND endDate ≥ ต้นเดือน`
 (แผนคร่อมเดือนจะโผล่ทั้งสองเดือน — เจตนา)
@@ -77,6 +78,7 @@ Error format: `TRPCError` — `code` เป็นมาตรฐาน tRPC, `me
 | Input | Type | หมายเหตุ |
 |---|---|---|
 | `name` | string 1–200 | |
+| `type` | "SOLAR"\|"CCTV"\|"NETWORK"? | ประเภทงาน — optional, เลือกจาก dropdown |
 | `startDate` | Date | ถูก normalize เป็นวัน ICT ก่อนเซฟ |
 | `endDate` | Date | เช่นเดียวกัน |
 
@@ -89,7 +91,7 @@ Error format: `TRPCError` — `code` เป็นมาตรฐาน tRPC, `me
 ### `workPlan.update` — mutation · ENGINEER · เจ้าของเท่านั้น
 
 Input: `{ id: string }` + fields ของ `create` แบบ optional (ส่งเฉพาะที่แก้)
-Field ที่ไม่ส่งจะไม่ถูก write ทับ
+Field ที่ไม่ส่งจะไม่ถูก write ทับ — รวมถึง `type` (ส่ง `{ type: undefined }` เพื่อล้างค่ากลับเป็นไม่ระบุ)
 
 **Errors:** `NOT_FOUND` · `FORBIDDEN` ไม่ใช่เจ้าของ · `BAD_REQUEST` แผนเริ่มงานแล้ว (แก้ไม่ได้) หรือวันจบก่อนวันเริ่ม
 

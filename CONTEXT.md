@@ -50,6 +50,7 @@ Scope ปัจจุบัน:
 | `actStart`/`actEnd` แยก column | เก็บเป็น timestamp เต็มเพื่อวิเคราะห์ KPI ย้อนหลังได้ (แผน vs จริง) |
 | บังคับ delay reason | ข้อมูล "ทำไมงานเลื่อน" คือ value หลักของ module นี้ต่อ CEO |
 | Job ID ระบบรันให้ — user ไม่กรอก | กันเลขชน/รูปแบบเพี้ยนจากการกรอกมือ (รันจาก Postgres sequence) — พอมี Job table ค่อยย้ายเลขรันไปที่นั่น |
+| เพิ่ม field `type` (SOLAR/CCTV/NETWORK) | เลือกใส่ใน WorkPlan (enum nullable + dropdown) ไม่สร้าง Site table — เป็น field `type` ที่เคยทำนายไว้ว่า "เพิ่มทีหลังได้โดยไม่พังโครง" ก็เลยทำจริง; ใช้ในหน้า "ไซต์งาน" กรองตามประเภท ดึงจาก `workPlan.list` เดิม (ค่า enum ทำ migration additive + backfill ตาม prefix jobId ไม่ล้างข้อมูล) |
 
 ## ผู้ใช้จริง
 

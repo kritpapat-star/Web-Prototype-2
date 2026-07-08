@@ -5,22 +5,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { trpc } from "../lib/trpc";
-import { getToken, setToken } from "../lib/trpc";
-
-// ⚠️ DEV BYPASS: ปิดหน้า login ชั่วคราว — เข้า dashboard ตรงเลย (API นับ request ที่ไม่มี token เป็น tawan ให้เอง)
-// เปิดกลับ: เปลี่ยนเป็น false (คู่กับ bypass ใน apps/api/src/trpc.ts และ dashboard/page.tsx)
-// (ใช้ as boolean กัน TS มองว่า form ข้างล่างเป็น unreachable code แล้วเลิก narrow type)
-const DEV_BYPASS = true as boolean;
+import { trpc, getToken, setToken } from "../lib/trpc";
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  // มี token ค้างอยู่ → ข้ามไป dashboard (DEV_BYPASS = ข้ามเสมอ)
+  // มี token ค้างอยู่ → ข้ามไป dashboard เลย ไม่ต้อง login ซ้ำ
   useEffect(() => {
-    if (DEV_BYPASS || getToken()) router.replace("/dashboard");
+    if (getToken()) router.replace("/dashboard");
   }, [router]);
 
   const login = trpc.auth.login.useMutation({
@@ -29,25 +23,6 @@ export default function LoginPage() {
       router.push("/dashboard");
     },
   });
-
-  // ⚠️ DEV BYPASS: ไม่ render form login — โชว์ข้อความสั้นๆ ระหว่างเด้งเข้า /dashboard
-  // (form เดิมอยู่ถัดลงไปครบทุกบรรทัด ไม่ได้แก้อะไร)
-  if (DEV_BYPASS)
-    return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "sans-serif",
-          background: "#f3f4f6",
-          color: "#6b7280",
-        }}
-      >
-        กำลังเข้าระบบเป็น tawan…
-      </main>
-    );
 
   return (
     <main

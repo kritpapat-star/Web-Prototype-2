@@ -6,8 +6,14 @@
 ## การตัดสินใจที่ lock แล้ว (ห้ามเปลี่ยนโดยไม่ถาม)
 
 1. **Architecture แบบ B** — web / api / db แยก 3 containers, web ไม่มี Prisma และห้าม import อะไรจาก `apps/api` ยกเว้น **type** (`import type { AppRouter }`)
-2. **Schema 2 tables** — `User` + `WorkPlan` เท่านั้นใน scope ปัจจุบัน (`jobId` เป็น string แขวนไว้ รอ Job table)
+2. **Schema 3 tables** — `User` + `WorkPlan` + `AuditLog` ใน scope ปัจจุบัน (`jobId` เป็น string แขวนไว้ รอ Job table)
    ตั้งแต่ 6 ก.ค. 2026 `jobId` รันเลขอัตโนมัติจาก sequence `job_id_seq` — client ไม่ส่ง/แก้ไม่ได้
+   ตั้งแต่ 7 ก.ค. 2026 มี `AuditLog` (append-only — ห้ามมี update/delete) เขียนจาก middleware ใน `trpc.ts`
+   เท่านั้น (+ login ใน `auth.ts`) ทุก mutation ที่สำเร็จถูก log อัตโนมัติ — **ห้ามเก็บ password ลง detail**
+   ตั้งแต่ 7 ก.ค. 2026 (เพิ่มเติม) เก็บ **full click telemetry** ด้วย: ฝั่ง web ดักทุกคลิก
+   (`ClickLogger` ใน `providers.tsx`) แล้วส่งเป็นก้อนผ่าน mutation `auditLog.track` ตัวเดียว
+   (`action = "ui.click"`, `detail = {page,label,tag,at}` — เก็บแค่ตัวตนของ element ห้ามมีค่าใน input)
+   → นี่คือ **ข้อยกเว้นเดียว** ที่ client เขียน log ได้ (นอกนั้นยังห้าม) และ middleware ข้าม path นี้กัน log ซ้อน
 3. **Status ไม่เก็บใน DB** — คำนวณจาก `actStart`/`actEnd`/`startDate`/`endDate` เสมอ (ดู `planStatus()`)
    ห้ามเพิ่ม column `status` เด็ดขาด
 4. **วันที่ = ICT (UTC+7)** — input วันที่ทุกจุดต้องผ่าน `dateOnlyICT()` ก่อนเซฟลง column `@db.Date`
@@ -61,9 +67,10 @@ docker compose up -d --build
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `apps/api/src/trpc.ts` | context (verify JWT) + middleware ทั้งหมด |
+| `apps/api/src/trpc.ts` | context (verify JWT) + middleware ทั้งหมด (RBAC + audit log) |
 | `apps/api/src/routers/workPlan.ts` | logic หลักของ module |
 | `apps/api/src/routers/auth.ts` | login / me |
+| `apps/api/src/routers/auditLog.ts` | ประวัติการใช้งาน: `list` (engineer เห็นของตัวเอง / CEO เห็นทุกคน) + `track` (web ส่ง click log เข้า) |
 | `apps/web/src/lib/trpc.ts` | tRPC client + จัดการ token |
 | `apps/api/prisma/schema.prisma` | source of truth ของ data model |
 | `apps/api/prisma/seed.ts` | test data ครอบคลุมทุก status |

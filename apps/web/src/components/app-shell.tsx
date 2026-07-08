@@ -3,14 +3,28 @@
 // โครงหน้าหลัง login ตาม UI อ้างอิง: sidebar "Be Connected" + topbar (ชื่อหน้า + กระดิ่ง) + เนื้อหา
 // เมนูอื่นนอกจาก "งานของฉัน" เป็นโมดูลอนาคต (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
 // — โชว์ตำแหน่งไว้ตาม design แต่ยังกดไม่ได้ จนกว่าโมดูลนั้นจะถูกสร้าง
+// "ประวัติการใช้งาน" (audit log) เปิดให้ทุก role — engineer เห็นเฉพาะของตัวเอง / CEO เห็นทุกคน (scope ที่ API)
 
-const NAV_ITEMS = [
-  { key: "my-work", label: "งานของฉัน", enabled: true },
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+type NavItem = {
+  key: string;
+  label: string;
+  href?: string; // มี href = กดได้ (enabled ต้องเป็น true ด้วย)
+  enabled: boolean;
+  ceoOnly?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { key: "my-work", label: "งานของฉัน", href: "/dashboard", enabled: true },
+  { key: "sites", label: "ไซต์งาน", href: "/sites", enabled: true },
+  { key: "logs", label: "ประวัติการใช้งาน", href: "/logs", enabled: true },
   { key: "inventory", label: "คลังอุปกรณ์", enabled: false },
   { key: "borrow-return", label: "ยืม-คืน", enabled: false },
   { key: "time", label: "ลงเวลา", enabled: false },
   { key: "leave", label: "ลา", enabled: false },
-] as const;
+];
 
 export function AppShell({
   title,
@@ -23,22 +37,35 @@ export function AppShell({
   onLogout: () => void;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">Be Connected</div>
 
         <nav className="nav">
-          {NAV_ITEMS.map((item) => (
-            <div
-              key={item.key}
-              className={item.enabled ? "nav-item active" : "nav-item disabled"}
-              title={item.enabled ? undefined : "โมดูลถัดไป — ยังไม่เปิดใช้งาน"}
-            >
-              <span className="bullet" />
-              {item.label}
-            </div>
-          ))}
+          {NAV_ITEMS.filter((item) => !item.ceoOnly || user.role === "CEO").map((item) =>
+            item.enabled && item.href ? (
+              <Link
+                key={item.key}
+                href={item.href}
+                className={pathname === item.href ? "nav-item active" : "nav-item"}
+              >
+                <span className="bullet" />
+                {item.label}
+              </Link>
+            ) : (
+              <div
+                key={item.key}
+                className="nav-item disabled"
+                title="โมดูลถัดไป — ยังไม่เปิดใช้งาน"
+              >
+                <span className="bullet" />
+                {item.label}
+              </div>
+            ),
+          )}
         </nav>
 
         <div className="sidebar-footer">

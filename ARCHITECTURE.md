@@ -31,11 +31,17 @@ User 1 ─── N WorkPlan
 
 - `User`: id, username (unique), passwordHash, name, role (CEO|ENGINEER), color
 - `WorkPlan`: id, jobId (string — รอ Job table), userId, name,
+  type (`PlanType?` — SOLAR/CCTV/NETWORK, optional; เลือกจาก dropdown ตอนสร้าง/แก้),
   startDate/endDate (`@db.Date` — แผน), actStart/actEnd (timestamp — จริง),
   delayStartReason/delayEndReason, createdAt/updatedAt
 - `jobId` ระบบ gen เองตอน create (`JOB-001`, `JOB-002`, …) จาก Postgres sequence `job_id_seq`
   (migration `20260706000000_job_id_sequence`) — user ไม่กรอก/แก้ไม่ได้ ฝั่ง client ไม่รับ field นี้
   ไม่ใช่ตารางใหม่ จึงยังอยู่ในกรอบ "2 tables" ที่ lock ไว้ — พอมี Job table ค่อยย้ายเลขรันไปที่นั่น
+- `type` (`PlanType?`) — ประเภทงาน SOLAR/CCTV/NETWORK optional;
+  migration `20260707064110_add_workplan_type` (additive enum + คอลัมน์ nullable + backfill ตาม prefix `jobId`)
+  คือ field `type` ที่เคยทำนายไว้ใน CONTEXT.md ("เพิ่ม field `type` ทีหลังได้โดยไม่พังโครง") **ถูกทำจริงแล้ว**
+  — เลือกจาก dropdown ตอนสร้าง/แก้แผน ใช้กรองในหน้า "ไซต์งาน" (`workPlan.list({type?})`)
+  ไม่ได้สร้าง Site table (เคยพิจารณา ยกเลิก)
 - Indexes: `[userId, startDate]` (มุมมอง Engineer), `[startDate, endDate]` (ปฏิทินรวม CEO)
 
 ## หลักการที่ lock แล้ว + เหตุผล
@@ -83,16 +89,22 @@ NextAuth ถูกตัดออกตอนย้ายเป็นแบบ B
 web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก request
 
 ⚠️ **DEV BYPASS ชั่วคราว (ตั้งแต่ 4 ก.ค. 2026):** request ที่ไม่มี token ถูกนับเป็น user `tawan`
-และหน้า login ถูกข้ามเข้า `/dashboard` ตรง — มี 3 จุด: `apps/api/src/trpc.ts`,
-`apps/web/src/app/page.tsx`, `apps/web/src/app/dashboard/page.tsx` (แต่ละจุดมี comment วิธีเอาออก)
+และหน้า login ถูกข้ามเข้า `/dashboard` ตรง — มี 4 จุด: `apps/api/src/trpc.ts`,
+`apps/web/src/app/page.tsx`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/app/sites/page.tsx`
+(แต่ละจุดมี comment วิธีเอาออก)
 งานลบ bypass อยู่ใน TASK.md — **ต้องลบก่อนออกนอกเครื่อง dev**
 
 ## โครง UI ฝั่ง web
 
 - หลัง login ทุกหน้าอยู่ใน **AppShell** เดียว (`apps/web/src/components/app-shell.tsx`):
-  sidebar แบรนด์ "Be Connected" + เมนู 5 อัน + การ์ด user/logout และ topbar (ชื่อหน้า + กระดิ่ง)
-  เมนูที่ใช้ได้จริงมีเฉพาะ "งานของฉัน" — ที่เหลือ (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
+  sidebar แบรนด์ "Be Connected" + เมนู + การ์ด user/logout และ topbar (ชื่อหน้า + กระดิ่ง)
+  เมนูที่ใช้ได้จริง: "งานของฉัน" (`/dashboard`) + "ไซต์งาน" (`/sites`) +
+  "ประวัติการใช้งาน" (`/logs`, CEO เท่านั้น) — ที่เหลือ (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
   เป็น placeholder ตามแผน reset scope จะเปิดใช้เมื่อ module นั้นถูกหยิบกลับมา
+- `/sites` = "ไซต์งาน" — มุมมองแผนงานรายเดือนแบบกรองตามประเภท (`type`) ใช้ `workPlan.list({type?})`
+  ตัวเดียวกับปฏิทิน; filter-only page (ไม่มีปุ่ม mutation — สร้าง/แก้ทำที่ `/dashboard`)
+  chip ประเภท (`PLAN_TYPE_META` ใน `apps/web/src/lib/plan-types.ts`) วางคนละสี/ตำแหน่งกับ chip status
+  กันสับสน; CEO เห็นทุกคน / Engineer เห็นเฉพาะของตัวเอง (RBAC เดียวกับ `list`)
 - `/dashboard` = 4 มุมมองของ WorkPlan table เดียว เรียงจากบนลงล่าง (scope ดู CONTEXT.md):
   1. **ปฏิทินเดือน** + แผงแผนงานของวันที่เลือก (คลิกวันในปฏิทินเพื่อเปลี่ยน)
   2. **รายการแผนทั้งเดือน** + ปุ่ม/modal "+ เพิ่มแผน" และ "แก้ไข" — แก้ได้เฉพาะแผนของตัวเอง
@@ -101,6 +113,11 @@ web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก r
   3. **สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน** (`TodayBanner`) — ปุ่มเริ่ม/จบงาน + dialog delay reason
   4. **สรุปงานประจำวัน** (`SummaryPanel`) — tile นับตาม status + รายการจัดกลุ่มตาม status
   ปุ่ม mutation ทุกจุดแสดงเฉพาะ ENGINEER — CEO view-only จึงไม่มีปุ่มใดๆ ใน UI
+- **ปฏิทินเดือน**แสดงแผนหลายวันเป็น**แถบต่อเนื่อง**ตัดแบ่งที่ขอบสัปดาห์ (แบบ Google Calendar):
+  โครงเป็นแถวสัปดาห์ `.cal-week` (CSS grid) — แถบวางทับเซลล์ด้วย `grid-column` span
+  เซลล์วันยังคลิกเลือกวันได้ (คลิกบนแถบก็แปลงตำแหน่งเป็นวันให้) จัด lane ด้วย pure function
+  ใน `apps/web/src/lib/calendar-lanes.ts` (greedy ต่อสัปดาห์, เกิน 3 lane พับเป็น "+N เพิ่มเติม")
+  หัว/ท้ายแถบมนเฉพาะจุดที่แผนเริ่ม/จบจริง — ขอบตัดข้ามสัปดาห์/คร่อมเดือนเรียบ สื่อว่าแผนต่อเนื่อง
 - มุมมอง 3 และ 4 ใช้ query แยก `workPlan.todo`
   = แผนที่ทับวันนี้ + งานค้างจากวันก่อน (`endDate < วันนี้ AND actEnd IS NULL`) ไม่ผูกกับเดือนในปฏิทิน
   **เหตุผลที่ไม่ reuse `list`:** window รายเดือนมองไม่เห็นงานค้างข้ามเดือน — เช่นแผนจบ 30 มิ.ย.
@@ -110,7 +127,9 @@ web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก r
 - สไตล์เป็น CSS ล้วนที่ `apps/web/src/app/globals.css` — ไม่ใช้ Tailwind/UI framework
   เหตุผล: ยังไม่เพิ่ม dependency จนกว่า UI จะโตพอคุ้มค่า maintain
 - สี/ป้าย status มีที่เดียวคือ `STATUS_META` ใน `apps/web/src/lib/status.ts` —
-  pill ในปฏิทินและ chip ในแผงรายวันใช้ชุดเดียวกัน (แก้สีแก้ที่เดียว)
+  แถบในปฏิทินและ chip ในแผงรายวันใช้ชุดเดียวกัน (แก้สีแก้ที่เดียว)
+- สี/ป้ายประเภทงานมีที่เดียวคือ `PLAN_TYPE_META` ใน `apps/web/src/lib/plan-types.ts`
+  (คู่กบ STATUS_META) — โทนนุ่มไม่ทับ status chip
 - ปีใน UI เป็น **ค.ศ.** ตาม design: format ผ่าน locale `th-TH-u-ca-gregory`
   (`th-TH` เพียวๆ จะได้ พ.ศ.) และวันที่จาก DB ทุกจุด format ด้วย `timeZone: "UTC"`
   เพราะค่าเป็น UTC midnight ที่แทน "วันตามเวลาไทย" อยู่แล้ว (ดูหลักการข้อ 3)

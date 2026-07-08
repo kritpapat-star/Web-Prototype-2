@@ -18,19 +18,6 @@ export type JwtPayload = {
   name: string;
 };
 
-// ---------- DEV BYPASS (ชั่วคราว — ลบทั้ง block นี้เมื่อเปิด login กลับ) ----------
-// ⚠️ ปิดหน้า login ชั่วคราว: request ที่ไม่มี token / token ใช้ไม่ได้ จะถูกนับเป็น "tawan" อัตโนมัติ
-// วิธีเอาออก: ลบ block นี้ + ลบบรรทัดที่เรียก devBypassUser() ใน createContext
-const DEV_BYPASS_USERNAME = "tawan";
-let devBypassCache: JwtPayload | null = null;
-async function devBypassUser(): Promise<JwtPayload | null> {
-  if (!devBypassCache) {
-    const u = await prisma.user.findUnique({ where: { username: DEV_BYPASS_USERNAME } });
-    if (u) devBypassCache = { sub: u.id, role: u.role, name: u.name };
-  }
-  return devBypassCache;
-}
-
 // ---------- CONTEXT ----------
 // สร้างต่อ 1 request: อ่าน "Authorization: Bearer <token>" → verify → ได้ user
 // verify ไม่ผ่าน = user เป็น null (ให้ middleware เป็นคนตัดสินใจว่า route ไหนต้อง login)
@@ -48,9 +35,6 @@ export async function createContext({ req }: { req: { headers: Record<string, st
     }
   }
 
-  // ⚠️ DEV BYPASS: ไม่มี token ก็ให้เป็น tawan ไปก่อน (ลบบรรทัดนี้เมื่อเปิด login กลับ)
-  if (!user) user = await devBypassUser();
-
   return { prisma, user };
 }
 export type Context = Awaited<ReturnType<typeof createContext>>;
@@ -61,13 +45,49 @@ const t = initTRPC.context<Context>().create({ transformer: superjson });
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
-// ต้อง login (มี JWT ที่ verify ผ่าน)
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "กรุณา login ก่อน" });
+// ---------- AUDIT LOG ----------
+// เก็บทุก mutation ที่สำเร็จลงตาราง audit_logs (append-only — ห้ามมี update/delete)
+// แขวนกับ protectedProcedure → mutation ที่เพิ่มใหม่ในอนาคตถูก log อัตโนมัติ ไม่ต้องเรียกเอง
+// (auth.login เป็น publicProcedure — log แยกใน routers/auth.ts เพราะตอนเรียกยังไม่มี ctx.user)
+const auditMutation = t.middleware(async ({ ctx, type, path, getRawInput, next }) => {
+  const result = await next();
+
+  // query ไม่ log (เสียงรบกวน) / mutation ที่ fail ไม่ log (ไม่มีอะไรเปลี่ยนใน DB)
+  // auditLog.track เขียน record คลิกของตัวเองแล้ว — ข้าม กันเขียน log ซ้อน (action="auditLog.track" ครอบ events)
+  if (type === "mutation" && result.ok && ctx.user && path !== "auditLog.track") {
+    try {
+      // raw input ผ่าน zod ของ procedure มาแล้ว (result.ok) — แปลงผ่าน JSON ให้ Date เป็น ISO string
+      const rawInput = await getRawInput();
+      const detail = rawInput === undefined ? undefined : JSON.parse(JSON.stringify(rawInput));
+      const data = result.data as { id?: unknown } | undefined;
+      const targetId =
+        typeof detail?.id === "string"
+          ? detail.id // update/start/finish ส่ง id มาใน input
+          : typeof data?.id === "string"
+            ? data.id // create เพิ่งได้ id จากผลลัพธ์
+            : null;
+
+      await prisma.auditLog.create({
+        data: { userId: ctx.user.sub, action: path, targetId, detail },
+      });
+    } catch (err) {
+      // เขียน log พลาดต้องไม่ทำให้ mutation ที่สำเร็จแล้วพังตาม
+      console.error("เขียน audit log ไม่สำเร็จ:", err);
+    }
   }
-  return next({ ctx: { ...ctx, user: ctx.user } }); // narrow: user ไม่เป็น null แล้ว
+
+  return result;
 });
+
+// ต้อง login (มี JWT ที่ verify ผ่าน)
+export const protectedProcedure = t.procedure
+  .use(({ ctx, next }) => {
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "กรุณา login ก่อน" });
+    }
+    return next({ ctx: { ...ctx, user: ctx.user } }); // narrow: user ไม่เป็น null แล้ว
+  })
+  .use(auditMutation);
 
 // เฉพาะ ENGINEER (CEO ดูอย่างเดียว ห้าม mutate WorkPlan)
 export const engineerProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -75,6 +95,18 @@ export const engineerProcedure = protectedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "เฉพาะ Engineer เท่านั้นที่แก้ไขแผนงานได้ (CEO ดูอย่างเดียว)",
+    });
+  }
+  return next({ ctx });
+});
+
+// เฉพาะ CEO — primitive สำรองไว้สำหรับหน้าเฉพาะผู้บริหาร (ตอนนี้ยังไม่มี router ไหนใช้:
+// auditLog.list เปิดให้ทุก role แล้วโดย scope เป็นรายคนที่ query แทน)
+export const ceoProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "CEO") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "เฉพาะ CEO เท่านั้น",
     });
   }
   return next({ ctx });

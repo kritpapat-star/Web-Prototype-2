@@ -17,6 +17,12 @@ enum Role {
   ENGINEER
 }
 
+enum PlanType {
+  SOLAR
+  CCTV
+  NETWORK
+}
+
 model User {
   id           String     @id @default(cuid())
   username     String     @unique
@@ -25,6 +31,7 @@ model User {
   role         Role
   color        String // สีประจำตัวบนปฏิทินรวมของ CEO เช่น "#0ea5e9"
   workPlans    WorkPlan[]
+  auditLogs    AuditLog[]
 
   @@map("users")
 }
@@ -34,6 +41,7 @@ model WorkPlan {
   jobId            String // อ้างถึง Job — จะเติม relation ทีหลัง
   userId           String
   name             String
+  type             PlanType? // ประเภทงาน — optional, เลือกจาก dropdown ตอนสร้าง/แก้
   startDate        DateTime  @db.Date // แผนเริ่ม
   endDate          DateTime  @db.Date // แผนจบ
   actStart         DateTime? // เริ่มจริง
@@ -48,4 +56,22 @@ model WorkPlan {
   @@index([userId, startDate])
   @@index([startDate, endDate]) // สำหรับ query ปฏิทินรวมของ CEO
   @@map("work_plans")
+}
+
+// Audit log — append-only (ห้ามมี update/delete). ผู้เขียนมี: middleware ใน trpc.ts
+// (ทุก mutation สำเร็จ) + login ใน auth.ts + mutation auditLog.track (full click telemetry จาก web)
+// action="ui.click" เก็บแค่ตัวตนของ element — ห้ามมี password/ค่าใน input (ดู AGENT.md ข้อ lock)
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String // tRPC path เช่น "workPlan.create", "auth.login"
+  targetId  String? // id ของ record ที่ถูกกระทำ (ถ้ามี)
+  detail    Json? // input ของ mutation (ห้ามมี password เด็ดขาด — login ไม่เก็บ input)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
 }

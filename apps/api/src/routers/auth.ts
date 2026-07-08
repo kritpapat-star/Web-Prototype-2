@@ -38,6 +38,16 @@ export const authRouter = router({
       const payload: JwtPayload = { sub: user.id, role: user.role, name: user.name };
       const token = jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL });
 
+      // log login ตรงนี้เอง — middleware audit ใน trpc.ts ครอบไม่ถึง publicProcedure
+      // ⚠️ ห้ามเก็บ input เด็ดขาด (มี password)
+      try {
+        await ctx.prisma.auditLog.create({
+          data: { userId: user.id, action: "auth.login" },
+        });
+      } catch (err) {
+        console.error("เขียน audit log (login) ไม่สำเร็จ:", err);
+      }
+
       return {
         token,
         user: { id: user.id, name: user.name, role: user.role, color: user.color },

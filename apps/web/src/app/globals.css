@@ -290,6 +290,102 @@ input {
   background: #ececf4;
 }
 
+/* ---------- หน้าไซต์งาน: แถบ filter ประเภท + เดือน ---------- */
+
+.sites-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.type-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.type-btn {
+  background: #fff;
+  border: 1px solid #e0e0ea;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  color: #4b4e5c;
+  cursor: pointer;
+}
+
+.type-btn:hover {
+  background: #f5f5fa;
+}
+
+.type-btn.active {
+  border-color: #6d5ce8;
+  color: #6d5ce8;
+  font-weight: 600;
+}
+
+/* ช่องค้นหาข้ามเดือน — full-width บนมือถือ วางเป็นแถวใหม่ใต้ type filter + เดือน */
+.search-row {
+  position: relative;
+  flex-basis: 100%;
+  display: flex;
+}
+
+.search-input {
+  flex: 1;
+  width: 100%;
+  padding: 9px 38px 9px 12px; /* ขวาเผื่อที่วางปุ่มล้าง (×) */
+  border: 1px solid #e0e0ea;
+  border-radius: 999px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.search-input:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  color: #8a8da0;
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: #f1f1f6;
+  color: #4b4e5c;
+}
+
+/* ค้นหา active → ล็อคเลื่อนเดือน (จาง + กดไม่ได้) ผลค้นไม่ผูกกับเดือนที่เลือก */
+.month-nav.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* รวม chip ประเภท + chip status ในแถวแผน (หน้าไซต์งาน) */
+.plan-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* ---------- ปฏิทินเดือน ---------- */
 
 .cal-card {
@@ -320,12 +416,20 @@ input {
 }
 
 .cal-grid {
+  display: block;
+}
+
+/* แถวสัปดาห์: grid เดียว — เซลล์วัน span ทุก track ส่วนแถบแผนวางทับตาม lane
+   rows: โซนเลขวัน 34px (padding 8 + day-num 26) / lane แถบ 3 แถว / แถว "+N" / ตัวดันความสูง */
+.cal-week {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: 34px repeat(3, auto) auto minmax(0, 1fr);
+  min-height: 106px;
 }
 
 .cal-cell {
-  min-height: 106px;
+  grid-row: 1 / -1;
   padding: 8px 8px 10px;
   border-right: 1px solid #f0f0f6;
   border-bottom: 1px solid #f0f0f6;
@@ -333,7 +437,7 @@ input {
   min-width: 0;
 }
 
-.cal-cell:nth-child(7n) {
+.cal-week > .cal-cell:nth-child(7) {
   border-right: none;
 }
 
@@ -362,18 +466,42 @@ input {
   font-weight: 700;
 }
 
-.pill {
-  display: block;
-  margin-top: 5px;
-  padding: 2.5px 8px;
-  border-radius: 999px;
+/* แถบแผนงาน — สี border/bg/fg มาจาก STATUS_META (inline ใน component)
+   grid item รับ z-index ได้โดยไม่ต้อง position → วาดทับเส้นขอบระหว่างเซลล์ = ดูต่อเนื่อง */
+.cal-bar {
+  z-index: 1;
+  align-self: start;
+  margin: 0 0 4px;
+  padding: 2.5px 10px;
   border: 1px solid;
   font-size: 11.5px;
   line-height: 1.35;
-  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  min-width: 0;
+}
+
+/* หัว/ท้ายมนเฉพาะจุดที่แผนเริ่ม/จบจริง — ขอบตัดข้ามสัปดาห์/คร่อมเดือนปล่อยเรียบชนขอบช่อง */
+.cal-bar.bar-start {
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+  margin-left: 6px;
+}
+
+.cal-bar.bar-end {
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+  margin-right: 6px;
+}
+
+.cal-bar:not(.bar-start) {
+  border-left: none;
+}
+
+.cal-bar:not(.bar-end) {
+  border-right: none;
 }
 
 .pill-dot {
@@ -390,6 +518,13 @@ input {
   font-size: 11.5px;
   color: #8a8da0;
   text-align: center;
+}
+
+/* "+N เพิ่มเติม" ในปฏิทิน — คลิกทะลุไปเลือกวันที่เซลล์ข้างล่าง */
+.cal-more {
+  z-index: 1;
+  align-self: start;
+  pointer-events: none;
 }
 
 /* ---------- แผงแผนงานของวันที่เลือก ---------- */
@@ -542,6 +677,19 @@ input {
   border-color: #6d5ce8;
 }
 
+.field select {
+  padding: 9px 11px;
+  border: 1px solid #d9d9e3;
+  border-radius: 9px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.field select:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
 .field-row {
   display: flex;
   gap: 10px;
@@ -618,4 +766,126 @@ input {
   padding: 40px;
   text-align: center;
   color: #8a8da0;
+}
+
+/* ---------- ประวัติการใช้งาน (หน้า /logs) ---------- */
+
+/* nav-item ที่กดได้ตอนนี้เป็น <Link> — ตัดเส้นใต้ + เพิ่ม hover ให้รู้ว่ากดได้ */
+a.nav-item {
+  text-decoration: none;
+}
+
+a.nav-item:not(.active):hover {
+  background: #f4f4fa;
+}
+
+.log-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.log-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: #55586a;
+  font-size: 12.5px;
+  border-bottom: 1px solid #efeff5;
+  white-space: nowrap;
+}
+
+.log-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f1f6;
+  vertical-align: top;
+}
+
+.log-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* แถบ filter ช่วงวันที่ — วางใต้หัวข้อ ก่อนตาราง */
+.log-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}
+
+.log-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #55586a;
+}
+
+.log-date-input {
+  width: 120px;
+  padding: 7px 10px;
+  border: 1px solid #e0e0ea;
+  border-radius: 8px;
+  font-size: 13.5px;
+  background: #fff;
+  color: #33354a;
+}
+
+.log-date-input:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+/* พิมพ์ค้างไว้แต่ยังไม่เป็นวันที่ที่ถูกต้อง — ขอบแดงเตือน (ยังไม่กรองจนกว่าจะครบรูป) */
+.log-date-input.invalid {
+  border-color: #e5484d;
+  outline-color: #f4b0b2;
+}
+
+/* หัวข้อวันคั่นกลุ่ม (วันนี้ / เมื่อวาน / วันที่เต็ม) — แถบเต็มความกว้างในตาราง */
+.log-day-row td {
+  padding: 12px 12px 6px;
+  color: #55586a;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f7f7fb;
+  border-bottom: 1px solid #efeff5;
+}
+
+.log-time {
+  white-space: nowrap;
+  color: #55586a;
+}
+
+.log-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.log-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 420px;
+}
+
+/* บรรทัดหลัก — อ่านง่าย สีเข้มกว่าเดิม (แทน JSON ดิบ) */
+.log-detail-main {
+  color: #33354a;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+/* บรรทัดรอง — บริบทเสริม (หน้า/ประเภท+ช่วงวัน/เหตุผลล่าช้า) สีจาง */
+.log-detail-sub {
+  color: #8a8da0;
+  font-size: 12px;
+  word-break: break-word;
 }

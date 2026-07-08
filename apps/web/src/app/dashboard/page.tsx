@@ -9,8 +9,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { trpc, setToken } from "../../lib/trpc"; // ⚠️ DEV BYPASS: เอา getToken ออกชั่วคราว
+import { trpc, getToken, setToken } from "../../lib/trpc";
 import { dateOnlyICT, planStatus, STATUS_META } from "../../lib/status";
+import { PLAN_TYPE_META, PLAN_TYPE_OPTIONS, type PlanTypeKey } from "../../lib/plan-types";
 import { TH_GREGORIAN, fmtDayMonth, fmtFullDate } from "../../lib/format";
 import { AppShell } from "../../components/app-shell";
 import { MonthCalendar } from "../../components/month-calendar";
@@ -22,6 +23,7 @@ type EditablePlan = {
   id: string;
   jobId: string;
   name: string;
+  type?: "SOLAR" | "CCTV" | "NETWORK" | null;
   startDate: Date;
   endDate: Date;
 };
@@ -41,19 +43,22 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EditablePlan | null>(null);
 
-  // ⚠️ DEV BYPASS: ข้ามการเช็ค token ชั่วคราว (API นับ request ที่ไม่มี token เป็น tawan ให้เอง)
-  // เปิดกลับ: คืนเป็น if (!getToken()) router.replace("/"); else setReady(true);
+  // ไม่มี token → เด้งไปหน้า login / มี token ค่อยยิง query
   useEffect(() => {
-    setReady(true);
-  }, []);
+    if (!getToken()) router.replace("/");
+    else setReady(true);
+  }, [router]);
 
   const me = trpc.auth.me.useQuery(undefined, { enabled: ready, retry: false });
   const plans = trpc.workPlan.list.useQuery(view, { enabled: ready });
 
-  // ⚠️ DEV BYPASS: ปิด redirect กลับหน้า login ชั่วคราว — หน้า login ก็เด้งกลับมาที่นี่ จะกลายเป็นลูป
-  // เปิดกลับ: คืน useEffect เดิม (me.error → setToken(null) + router.replace("/"))
-  if (me.error)
-    return <div className="center-note">โหลดข้อมูลผู้ใช้ไม่สำเร็จ: {me.error.message}</div>;
+  // token หมดอายุ/ใช้ไม่ได้ → ล้าง token แล้วเด้งกลับหน้า login
+  useEffect(() => {
+    if (me.error) {
+      setToken(null);
+      router.replace("/");
+    }
+  }, [me.error, router]);
 
   if (!ready || me.isLoading) return <div className="center-note">กำลังโหลด…</div>;
   if (!me.data) return null; // ระหว่างเด้งกลับหน้า login
@@ -85,6 +90,7 @@ export default function DashboardPage() {
   // แถวแผน — หน้าตาเดียวกันทั้งแผงรายวันและรายการทั้งเดือน (ต่างกันแค่ปุ่มแก้ไข)
   const planRow = (plan: (typeof dayPlans)[number], withEdit: boolean) => {
     const meta = STATUS_META[planStatus(plan, today)];
+    const typeMeta = plan.type ? PLAN_TYPE_META[plan.type] : null;
     // แก้ได้เฉพาะแผนของตัวเองที่ยังไม่กดเริ่ม (กติกาเดียวกับ workPlan.update ฝั่ง API)
     const editable = withEdit && !isCEO && plan.userId === myId && !plan.actStart;
     return (
@@ -103,9 +109,16 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-        <span className="chip" style={{ background: meta.bg, color: meta.fg }}>
-          {meta.label}
-        </span>
+        <div className="plan-chips">
+          {typeMeta && (
+            <span className="chip" style={{ background: typeMeta.bg, color: typeMeta.fg }}>
+              {typeMeta.label}
+            </span>
+          )}
+          <span className="chip" style={{ background: meta.bg, color: meta.fg }}>
+            {meta.label}
+          </span>
+        </div>
         {editable && (
           <button className="btn-ghost btn-sm" onClick={() => setEditing(plan)}>
             แก้ไข
@@ -213,6 +226,7 @@ function PlanModal({
   const toInput = (d: Date) => d.toISOString().slice(0, 10); // UTC midnight → "YYYY-MM-DD" ตรงวันเสมอ
 
   const [name, setName] = useState(plan?.name ?? "");
+  const [typeV, setTypeV] = useState<"" | PlanTypeKey>(plan?.type ?? "");
   const [start, setStart] = useState(toInput(plan?.startDate ?? defaultDate ?? dateOnlyICT(new Date())));
   const [end, setEnd] = useState(toInput(plan?.endDate ?? defaultDate ?? dateOnlyICT(new Date())));
 
@@ -234,6 +248,7 @@ function PlanModal({
     if (!plan) {
       create.mutate({
         name: name.trim(),
+        ...(typeV ? { type: typeV } : {}),
         startDate: new Date(`${start}T00:00:00Z`),
         endDate: new Date(`${end}T00:00:00Z`),
       });
@@ -242,6 +257,7 @@ function PlanModal({
     update.mutate({
       id: plan.id,
       ...(name.trim() !== plan.name ? { name: name.trim() } : {}),
+      ...(typeV !== (plan.type ?? "") ? { type: typeV || undefined } : {}),
       ...(start !== toInput(plan.startDate) ? { startDate: new Date(`${start}T00:00:00Z`) } : {}),
       ...(end !== toInput(plan.endDate) ? { endDate: new Date(`${end}T00:00:00Z`) } : {}),
     });
@@ -277,6 +293,18 @@ function PlanModal({
             <input value={plan.jobId} disabled />
           </label>
         )}
+
+        <label className="field">
+          ประเภทงาน
+          <select value={typeV} onChange={(e) => setTypeV(e.target.value as "" | PlanTypeKey)}>
+            <option value="">— ไม่ระบุ —</option>
+            {PLAN_TYPE_OPTIONS.map((key) => (
+              <option key={key} value={key}>
+                {PLAN_TYPE_META[key].label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="field-row">
           <label className="field">
