@@ -23,26 +23,43 @@
 เมื่อ API เปลี่ยน contract → web ขึ้น type error ทันทีตอน compile
 (ผลข้างเคียงที่ตั้งใจ: tsc ฝั่ง web ไล่เช็ค source ของ api ด้วย จึงต้อง `prisma generate` ก่อน)
 
-## Data model (2 tables)
+## Data model (5 models)
 
 ```
-User 1 ─── N WorkPlan
+User 1 ─── N WorkPlan N ─── 1 Type (optional)
+User 1 ─── N AuditLog
+Site N ─── M Type   (implicit m-n — ตารางเชื่อม _SiteToType ที่ Prisma จัดการเอง)
 ```
 
-- `User`: id, username (unique), passwordHash, name, role (CEO|ENGINEER), color
-- `WorkPlan`: id, jobId (string — รอ Job table), userId, name,
-  type (`PlanType?` — SOLAR/CCTV/NETWORK, optional; เลือกจาก dropdown ตอนสร้าง/แก้),
+- `User`: id (Int เลขรัน autoincrement — เดิมเป็น cuid, แปลงใน `20260711000000_numeric_user_ids`
+  พร้อม remap FK ทั้ง `work_plans.userId`/`audit_logs.userId` — JWT `sub` เป็นเลขตาม),
+  username (unique), passwordHash, name, role (CEO|ENGINEER), color
+- `WorkPlan`: id (Int เลขรัน autoincrement), siteId (Int เลขรัน — รอ relation → Site), userId, name,
+  type (String? — FK → `types.id`, optional; เลือกจาก dropdown ตอนสร้าง/แก้),
   startDate/endDate (`@db.Date` — แผน), actStart/actEnd (timestamp — จริง),
   delayStartReason/delayEndReason, createdAt/updatedAt
-- `jobId` ระบบ gen เองตอน create (`JOB-001`, `JOB-002`, …) จาก Postgres sequence `job_id_seq`
-  (migration `20260706000000_job_id_sequence`) — user ไม่กรอก/แก้ไม่ได้ ฝั่ง client ไม่รับ field นี้
-  ไม่ใช่ตารางใหม่ จึงยังอยู่ในกรอบ "2 tables" ที่ lock ไว้ — พอมี Job table ค่อยย้ายเลขรันไปที่นั่น
-- `type` (`PlanType?`) — ประเภทงาน SOLAR/CCTV/NETWORK optional;
-  migration `20260707064110_add_workplan_type` (additive enum + คอลัมน์ nullable + backfill ตาม prefix `jobId`)
-  คือ field `type` ที่เคยทำนายไว้ใน CONTEXT.md ("เพิ่ม field `type` ทีหลังได้โดยไม่พังโครง") **ถูกทำจริงแล้ว**
-  — เลือกจาก dropdown ตอนสร้าง/แก้แผน ใช้กรองในหน้า "ไซต์งาน" (`workPlan.list({type?})`)
-  ไม่ได้สร้าง Site table (เคยพิจารณา ยกเลิก)
-- Indexes: `[userId, startDate]` (มุมมอง Engineer), `[startDate, endDate]` (ปฏิทินรวม CEO)
+- `Type` (`types`): lookup table ประเภทงาน — id เป็นเลขลำดับคงที่แบบ string (เช่น `"1"` = Solar Cell),
+  name unique แสดงใน dropdown/chip; แทน enum `PlanType` เดิมตั้งแต่ 9 ก.ค. 2026
+  (enum เกิด 7 ก.ค. ใน `20260707064110_add_workplan_type` แล้วแปลงเป็นตารางใน `20260709000000_plan_type_table`
+  + เปลี่ยน id เป็นเลขใน `20260709070000` + rename เป็น `types` ใน `20260709080000`)
+  ฝั่ง web ดึงตัวเลือก/ป้ายผ่าน query `type.list` (**ห้าม hardcode รายชื่อประเภท**) — สี chip อยู่ที่
+  `apps/web/src/lib/plan-types.ts` (`typeColor()` — ประเภทที่ยังไม่กำหนดสีได้สีเทากลาง)
+- `Site` (`sites`): id (Int เลขรัน autoincrement), name — **ผูกกับ WorkPlan แล้ว** (`work_plans.siteId` FK มาที่นี่
+  ตั้งแต่ 11 ก.ค. 2026 — Restrict: ลบไซต์ที่มีแผนใช้อยู่ไม่ได้)
+  `types` เป็น implicit m-n กับ `Type` (ไซต์มีได้หลายประเภท — ตั้งแต่ 11 ก.ค. 2026 ใช้ตารางเชื่อม
+  `_SiteToType` ที่ Prisma จัดการเอง แทน model `SiteType`/table `site_types` เดิม
+  ใน `20260711044237_site_types_implicit_m2m` — ลบ `Type` ที่มีไซต์ใช้จะหลุดจากไซต์เงียบๆ ไม่ถูกบล็อก)
+- `AuditLog` (`audit_logs`): append-only (**ห้ามมี update/delete**) — userId, action (tRPC path),
+  targetId (text เสมอ), detail (Json), createdAt; ผู้เขียนมีแค่ middleware `auditMutation` ใน `trpc.ts`
+  (ทุก mutation สำเร็จ) + login ใน `auth.ts` + click telemetry ผ่าน `auditLog.track`
+- `siteId` เป็น FK → `sites.id` — user เลือกจาก dropdown ใน PlanModal (กรองตาม `Site.types`
+  ตามประเภทงานที่เลือก — ล็อกจนกว่าจะเลือกประเภท จึงบังคับ `type` ตอน create ไปด้วย)
+  ตั้งแต่ 11 ก.ค. 2026 ใน `20260711074613_link_work_plan_site`: backfill placeholder "ไซต์ #N"
+  ให้แผนเก่า + drop sequence `site_id_seq` เดิมที่ API เคย gen เลขเอง
+  (ประวัติเลขรัน: `jobId`/`job_id_seq` ใน `20260706000000` → rename ใน `20260709110000` →
+  ตัด prefix `SITE-` เหลือเลขล้วนใน `20260710000000_numeric_run_ids`)
+- Indexes: `work_plans[userId, startDate]` (มุมมอง Engineer), `work_plans[startDate, endDate]`
+  (ปฏิทินรวม CEO), `work_plans[siteId]` (แผนรายไซต์), `audit_logs[createdAt]` + `audit_logs[userId, createdAt]` (หน้า /logs)
 
 ## หลักการที่ lock แล้ว + เหตุผล
 
@@ -86,25 +103,23 @@ Browser ไทยส่ง "เที่ยงคืนวันที่ N" ม
 
 NextAuth ถูกตัดออกตอนย้ายเป็นแบบ B (session cookie ของมันข้าม server ไม่ได้)
 `auth.login` เช็ค bcrypt → ออก JWT อายุ 12 ชม. payload `{ sub, role, name }`
+(`sub` = user id เลขรัน Int ตั้งแต่ 11 ก.ค. 2026 — token เก่าที่ sub เป็น cuid ถูกตีเป็นไม่ได้ login)
 web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก request
-
-⚠️ **DEV BYPASS ชั่วคราว (ตั้งแต่ 4 ก.ค. 2026):** request ที่ไม่มี token ถูกนับเป็น user `tawan`
-และหน้า login ถูกข้ามเข้า `/dashboard` ตรง — มี 4 จุด: `apps/api/src/trpc.ts`,
-`apps/web/src/app/page.tsx`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/app/sites/page.tsx`
-(แต่ละจุดมี comment วิธีเอาออก)
-งานลบ bypass อยู่ใน TASK.md — **ต้องลบก่อนออกนอกเครื่อง dev**
+(DEV BYPASS login ที่เคยเปิดชั่วคราว 4 ก.ค. 2026 ลบออกแล้วตั้งแต่ 8 ก.ค. 2026 — auth จริงทั้งระบบ)
 
 ## โครง UI ฝั่ง web
 
 - หลัง login ทุกหน้าอยู่ใน **AppShell** เดียว (`apps/web/src/components/app-shell.tsx`):
   sidebar แบรนด์ "Be Connected" + เมนู + การ์ด user/logout และ topbar (ชื่อหน้า + กระดิ่ง)
   เมนูที่ใช้ได้จริง: "งานของฉัน" (`/dashboard`) + "ไซต์งาน" (`/sites`) +
-  "ประวัติการใช้งาน" (`/logs`, CEO เท่านั้น) — ที่เหลือ (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
+  "ประวัติการใช้งาน" (`/logs` — ทุก role: engineer เห็นเฉพาะของตัวเอง / CEO เห็นทุกคน, scope ที่ API)
+  — ที่เหลือ (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
   เป็น placeholder ตามแผน reset scope จะเปิดใช้เมื่อ module นั้นถูกหยิบกลับมา
 - `/sites` = "ไซต์งาน" — มุมมองแผนงานรายเดือนแบบกรองตามประเภท (`type`) ใช้ `workPlan.list({type?})`
-  ตัวเดียวกับปฏิทิน; filter-only page (ไม่มีปุ่ม mutation — สร้าง/แก้ทำที่ `/dashboard`)
-  chip ประเภท (`PLAN_TYPE_META` ใน `apps/web/src/lib/plan-types.ts`) วางคนละสี/ตำแหน่งกับ chip status
-  กันสับสน; CEO เห็นทุกคน / Engineer เห็นเฉพาะของตัวเอง (RBAC เดียวกับ `list`)
+  ตัวเดียวกับปฏิทิน + ค้นหาข้ามเดือนด้วย `workPlan.search({q, type?})` (ชื่อแผน / เลขไซต์ `"12"`/`"#5"`);
+  filter-only page (ไม่มีปุ่ม mutation — สร้าง/แก้ทำที่ `/dashboard`)
+  chip ประเภท (สีจาก `typeColor()` ใน `apps/web/src/lib/plan-types.ts`, ป้ายจาก `type.list`)
+  วางคนละสี/ตำแหน่งกับ chip status กันสับสน; CEO เห็นทุกคน / Engineer เห็นเฉพาะของตัวเอง (RBAC เดียวกับ `list`)
 - `/dashboard` = 4 มุมมองของ WorkPlan table เดียว เรียงจากบนลงล่าง (scope ดู CONTEXT.md):
   1. **ปฏิทินเดือน** + แผงแผนงานของวันที่เลือก (คลิกวันในปฏิทินเพื่อเปลี่ยน)
   2. **รายการแผนทั้งเดือน** + ปุ่ม/modal "+ เพิ่มแผน" และ "แก้ไข" — แก้ได้เฉพาะแผนของตัวเอง
@@ -128,8 +143,9 @@ web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก r
   เหตุผล: ยังไม่เพิ่ม dependency จนกว่า UI จะโตพอคุ้มค่า maintain
 - สี/ป้าย status มีที่เดียวคือ `STATUS_META` ใน `apps/web/src/lib/status.ts` —
   แถบในปฏิทินและ chip ในแผงรายวันใช้ชุดเดียวกัน (แก้สีแก้ที่เดียว)
-- สี/ป้ายประเภทงานมีที่เดียวคือ `PLAN_TYPE_META` ใน `apps/web/src/lib/plan-types.ts`
-  (คู่กบ STATUS_META) — โทนนุ่มไม่ทับ status chip
+- สีประเภทงานมีที่เดียวคือ `typeColor()`/`PLAN_TYPE_COLORS` ใน `apps/web/src/lib/plan-types.ts`
+  (คู่กับ STATUS_META) — โทนนุ่มไม่ทับ status chip; ส่วน**ป้าย/รายชื่อประเภท**มาจาก DB ผ่าน `type.list`
+  (ประเภทใหม่ที่ยังไม่กำหนดสีจะได้สีเทากลาง — เพิ่มสีทีหลังได้โดยไม่พัง)
 - ปีใน UI เป็น **ค.ศ.** ตาม design: format ผ่าน locale `th-TH-u-ca-gregory`
   (`th-TH` เพียวๆ จะได้ พ.ศ.) และวันที่จาก DB ทุกจุด format ด้วย `timeZone: "UTC"`
   เพราะค่าเป็น UTC midnight ที่แทน "วันตามเวลาไทย" อยู่แล้ว (ดูหลักการข้อ 3)
@@ -143,7 +159,7 @@ web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก r
 
 ## สิ่งที่ตั้งใจยังไม่ทำ (รอ scope ขยาย)
 
-- Job table + relation จาก `WorkPlan.jobId`
+- relation จาก `WorkPlan.siteId` → table `Site` (ตอนนี้ยังเป็นเลขรันอิสระ (Int) ไม่ใช่ FK)
 - Module อื่นจาก ERP เต็ม (inventory, loan, attendance, leave, notification) — โครงอยู่ใน `schema_merged.prisma`
 - Refresh token / httpOnly cookie (ดู trade-off ใน SECURITY.md)
 - Offline-first / GPS clock-in (อยู่ใน vision ระยะยาว)

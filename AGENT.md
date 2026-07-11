@@ -6,8 +6,31 @@
 ## การตัดสินใจที่ lock แล้ว (ห้ามเปลี่ยนโดยไม่ถาม)
 
 1. **Architecture แบบ B** — web / api / db แยก 3 containers, web ไม่มี Prisma และห้าม import อะไรจาก `apps/api` ยกเว้น **type** (`import type { AppRouter }`)
-2. **Schema 3 tables** — `User` + `WorkPlan` + `AuditLog` ใน scope ปัจจุบัน (`jobId` เป็น string แขวนไว้ รอ Job table)
-   ตั้งแต่ 6 ก.ค. 2026 `jobId` รันเลขอัตโนมัติจาก sequence `job_id_seq` — client ไม่ส่ง/แก้ไม่ได้
+2. **Schema 5 models** — `User` + `WorkPlan` + `AuditLog` + `Type` + `Site` ใน scope ปัจจุบัน (`WorkPlan.siteId` เป็น FK → `sites.id` แล้ว)
+   ตั้งแต่ 9 ก.ค. 2026 มี `Site` (table `sites`) เก็บ id/name — ประเภทของไซต์เป็น m-n กับ `Type`
+   (ไซต์มีได้หลายประเภท ไม่จำกัดจำนวน) ต่างจาก `WorkPlan` ที่ยังเป็น 1 type ต่อแผน
+   ตั้งแต่ 11 ก.ค. 2026 m-n นี้เป็น **implicit** (`Site.types Type[]` — Prisma จัดการตารางเชื่อม `_SiteToType` เอง)
+   แทน model `SiteType`/table `site_types` เดิม (migration `20260711044237_site_types_implicit_m2m`)
+   ⚠️ ลบ `Type` ที่มีไซต์ใช้อยู่ไม่ถูกบล็อกแล้ว (cascade หลุดจากไซต์เงียบๆ) — แต่ยังลบ type ที่มีแผนงานใช้ไม่ได้ (FK `work_plans.type` ยัง Restrict)
+   ตั้งแต่ 9 ก.ค. 2026 ประเภทงานเป็น lookup table `types` (id เป็นเลขลำดับคงที่เช่น `"1"`, name แสดงผลเช่น "Solar Cell")
+   แทน enum `PlanType` เดิม — `work_plans.type` เป็น FK ไป `types.id`, ฝั่ง web ดึงตัวเลือก/label
+   ผ่าน query `type.list` (ห้าม hardcode รายชื่อประเภท) ส่วนสี chip อยู่ที่ `apps/web/src/lib/plan-types.ts`
+   จำกัดไว้ ~5 ประเภท เรียงตาม id — ไม่มี sortOrder ถ้าจะมีเกิน 9 ประเภทต้องเพิ่มกลับ (id เป็น string, "10" < "2")
+   ตั้งแต่ 6 ก.ค. 2026 เลขรันอัตโนมัติจาก Postgres sequence — client ไม่ส่ง/แก้ไม่ได้
+   (9 ก.ค. 2026 เปลี่ยนชื่อ `jobId` → `siteId`, sequence `job_id_seq` → `site_id_seq`, prefix `JOB-` → `SITE-`)
+   ตั้งแต่ 10 ก.ค. 2026 id เป็น**เลขรันล้วน**: `WorkPlan.id`/`Site.id` เป็น Int autoincrement,
+   `WorkPlan.siteId` เป็น Int (ตัด prefix `SITE-` ออก — เลขเดิมคงไว้, ยัง gen จาก `site_id_seq` ตอน create)
+   migration `20260710000000_numeric_run_ids` แปลงข้อมูลเดิม + remap `audit_logs.targetId` ของ `workPlan.*`
+   ตั้งแต่ 11 ก.ค. 2026 `User.id` เป็นเลขรันด้วย (Int autoincrement 1, 2, 3, … เรียงตามลำดับสร้าง)
+   FK ตามไป 2 ที่: `work_plans.userId`, `audit_logs.userId` — migration `20260711000000_numeric_user_ids`
+   ผลข้างเคียง: JWT `sub` เป็นเลขแล้ว token เก่า (sub เป็น cuid) ถูก createContext ตัดเป็นไม่ได้ login → login ใหม่
+   ตั้งแต่ 11 ก.ค. 2026 (บ่าย) `WorkPlan.siteId` เป็น **FK → `sites.id`** (Restrict — ลบไซต์ที่มีแผนใช้ไม่ได้)
+   migration `20260711074613_link_work_plan_site`: backfill placeholder "ไซต์ #N" (+ผูกประเภทตามแผน)
+   ให้ siteId เดิมของแผนเก่า แล้ว **drop sequence `site_id_seq`** — เลขไซต์ใหม่มาจาก `sites.id` ผ่าน `site.create`
+   → **ยกเลิกกติกาเดิม "client ไม่ส่ง siteId"**: ตอนนี้ `workPlan.create`/`update` รับ `siteId` จาก dropdown
+   (กรองตาม `Site.types` — ล็อกจนกว่าจะเลือกประเภทงาน จึงบังคับ `type` ตอน create ไปด้วย)
+   API เช็คซ้ำเสมอว่าไซต์ที่ส่งมารองรับประเภทของแผน (`assertSiteMatchesType` ใน workPlan.ts)
+   แผนเก่าที่ `type` เป็น null ยังอยู่ได้ — update ไม่บังคับเติม แต่ถ้าจะเปลี่ยน type/ไซต์ต้องผ่านเช็คคู่ site↔type
    ตั้งแต่ 7 ก.ค. 2026 มี `AuditLog` (append-only — ห้ามมี update/delete) เขียนจาก middleware ใน `trpc.ts`
    เท่านั้น (+ login ใน `auth.ts`) ทุก mutation ที่สำเร็จถูก log อัตโนมัติ — **ห้ามเก็บ password ลง detail**
    ตั้งแต่ 7 ก.ค. 2026 (เพิ่มเติม) เก็บ **full click telemetry** ด้วย: ฝั่ง web ดักทุกคลิก
@@ -21,7 +44,7 @@
 5. **Delay reason บังคับที่ API** — `actStart > startDate` ต้องมี `delayStartReason`, `actEnd > endDate` ต้องมี `delayEndReason` — validation อยู่ที่ tRPC mutation เท่านั้น (ที่เดียว)
 6. **RBAC ที่ middleware** — `protectedProcedure` (ต้อง login) → `engineerProcedure` (เฉพาะ ENGINEER)
    CEO เป็น **view-only**: ห้ามมี mutation ไหนที่ CEO เรียกได้
-7. **Auth = JWT ออกเอง** — ไม่ใช้ NextAuth (ตัดออกไปแล้วตอนย้ายเป็นแบบ B) payload คือ `{ sub, role, name }` — user id อยู่ใน `sub`
+7. **Auth = JWT ออกเอง** — ไม่ใช้ NextAuth (ตัดออกไปแล้วตอนย้ายเป็นแบบ B) payload คือ `{ sub, role, name }` — user id อยู่ใน `sub` (เป็นเลขรัน Int ตั้งแต่ 11 ก.ค. 2026 — จงใจไม่ตาม RFC ที่ให้ sub เป็น string เพราะใช้ภายในระบบเดียว)
 
 ## Conventions
 
@@ -60,8 +83,6 @@ docker compose up -d --build
   ใส่ใน `environment:` ไม่มีผล (bug นี้เคยหลุดใน docker-compose.yml มาแล้ว)
 - **แผนคร่อมเดือน:** ห้าม query ด้วย `startDate` อย่างเดียว — งานติดตั้งจริงคร่อมเดือนบ่อย
   seed มีแผน 29 มิ.ย.–1 ก.ค. ไว้จับ bug นี้โดยเฉพาะ
-- **DEV BYPASS เปิดอยู่ (ชั่วคราว):** request ไม่มี token ถูกนับเป็น `tawan` + หน้า login ถูกข้าม
-  → เทสมือแล้ว "เข้าได้" ไม่ได้แปลว่า auth ทำงานถูก และ**ห้ามลืมลบก่อน deploy** (ดู TASK.md / SECURITY.md)
 
 ## ไฟล์สำคัญ
 

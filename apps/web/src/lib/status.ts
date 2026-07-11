@@ -40,6 +40,31 @@ export function countByStatus(
   return counts;
 }
 
+// ลำดับความสำคัญตอนแสดงแผน — ด่วนสุดขึ้นก่อน ใช้ทั้ง sort รายการและลำดับ chip สรุป:
+// เลยกำหนดเริ่ม → เลยกำหนดจบ → กำลังทำ → ยังไม่เริ่ม → เสร็จแล้ว
+export const STATUS_BY_URGENCY: PlanStatus[] = [
+  "NOT_STARTED_OVERDUE",
+  "IN_PROGRESS_OVERDUE",
+  "IN_PROGRESS",
+  "NOT_STARTED",
+  "COMPLETED",
+];
+
+// index ใน STATUS_BY_URGENCY = ค่าที่ใช้เทียบตอน sort
+const STATUS_PRIORITY = Object.fromEntries(
+  STATUS_BY_URGENCY.map((s, i) => [s, i]),
+) as Record<PlanStatus, number>;
+
+// เรียงแผนตาม STATUS_PRIORITY — status เท่ากันคงลำดับเดิมจาก API (startDate asc; sort ของ JS stable)
+// คืน array ใหม่ ไม่แตะของเดิม (ของเดิมคือ cache ของ react-query)
+export function sortByStatusPriority<
+  T extends { startDate: Date; endDate: Date; actStart: Date | null; actEnd: Date | null },
+>(plans: T[], today: Date): T[] {
+  return [...plans].sort(
+    (a, b) => STATUS_PRIORITY[planStatus(a, today)] - STATUS_PRIORITY[planStatus(b, today)],
+  );
+}
+
 // label + สีป้าย ใช้ร่วมกันทุกหน้าจอ
 export const STATUS_META: Record<PlanStatus, { label: string; bg: string; fg: string }> = {
   NOT_STARTED: { label: "ยังไม่เริ่ม", bg: "#e5e7eb", fg: "#374151" },

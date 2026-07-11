@@ -3,7 +3,7 @@
 // วันสมมติอิง seed: วันนี้ = 2 ก.ค. 2026 (UTC midnight ตามที่ dateOnlyICT normalize แล้ว)
 
 import { describe, it, expect } from "vitest";
-import { planStatus, dateOnlyICT, countByStatus } from "./status";
+import { planStatus, dateOnlyICT, countByStatus, sortByStatusPriority } from "./status";
 
 const TODAY = new Date("2026-07-02T00:00:00Z");
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -107,6 +107,36 @@ describe("countByStatus — แถบสรุปประจำวันใน 
       IN_PROGRESS_OVERDUE: 0,
       COMPLETED: 0,
     });
+  });
+});
+
+describe("sortByStatusPriority — เรียงรายการแผนตามความเร่งด่วน", () => {
+  // แผนละ 1 status (case เดียวกับ countByStatus ด้านบน) ใส่ name ไว้ตรวจลำดับง่ายๆ
+  const completed = { name: "completed", startDate: d("2026-06-29"), endDate: d("2026-07-01"), actStart: d("2026-06-29"), actEnd: d("2026-07-01") };
+  const inProgress = { name: "inProgress", startDate: d("2026-07-02"), endDate: d("2026-07-04"), actStart: d("2026-07-02"), actEnd: null };
+  const inProgressOverdue = { name: "inProgressOverdue", startDate: d("2026-06-28"), endDate: d("2026-06-30"), actStart: d("2026-06-28"), actEnd: null };
+  const notStartedOverdue = { name: "notStartedOverdue", startDate: d("2026-07-01"), endDate: d("2026-07-03"), actStart: null, actEnd: null };
+  const notStarted = { name: "notStarted", startDate: d("2026-07-13"), endDate: d("2026-07-17"), actStart: null, actEnd: null };
+
+  it("เลยกำหนดเริ่ม → เลยกำหนดจบ → กำลังทำ → ยังไม่เริ่ม → เสร็จแล้ว", () => {
+    const input = [completed, notStarted, inProgress, notStartedOverdue, inProgressOverdue];
+    expect(sortByStatusPriority(input, TODAY).map((p) => p.name)).toEqual([
+      "notStartedOverdue",
+      "inProgressOverdue",
+      "inProgress",
+      "notStarted",
+      "completed",
+    ]);
+  });
+
+  it("status เดียวกันคงลำดับเดิม (stable) + ไม่แก้ array ต้นทาง", () => {
+    const notStarted2 = { ...notStarted, name: "notStarted2" };
+    const input = [notStarted, completed, notStarted2];
+    const sorted = sortByStatusPriority(input, TODAY);
+    // notStarted มาก่อน notStarted2 ตามลำดับเดิม แม้ทั้งคู่ status เดียวกัน
+    expect(sorted.map((p) => p.name)).toEqual(["notStarted", "notStarted2", "completed"]);
+    // ต้นทางไม่ถูก sort ทับ (เป็น cache ของ react-query)
+    expect(input.map((p) => p.name)).toEqual(["notStarted", "completed", "notStarted2"]);
   });
 });
 

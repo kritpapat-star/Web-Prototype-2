@@ -10,9 +10,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { trpc, getToken, setToken } from "../../lib/trpc";
-import { dateOnlyICT, planStatus, STATUS_META } from "../../lib/status";
-import { PLAN_TYPE_META, PLAN_TYPE_OPTIONS, type PlanTypeKey } from "../../lib/plan-types";
-import { TH_GREGORIAN, fmtDayMonth, fmtFullDate } from "../../lib/format";
+import { dateOnlyICT, planStatus, sortByStatusPriority, STATUS_META } from "../../lib/status";
+import { typeColor } from "../../lib/plan-types";
+import { TH_GREGORIAN, fmtDayMonth, fmtFullDate, parseDMY } from "../../lib/format";
 import { AppShell } from "../../components/app-shell";
 import { MonthCalendar } from "../../components/month-calendar";
 import { TodayBanner } from "../../components/today-banner";
@@ -20,10 +20,10 @@ import { SummaryPanel } from "../../components/summary-panel";
 
 // ข้อมูลแผนเท่าที่ form แก้ไขใช้ (หยิบจากแถวใน list)
 type EditablePlan = {
-  id: string;
-  jobId: string;
+  id: number;
+  siteId: number;
   name: string;
-  type?: "SOLAR" | "CCTV" | "NETWORK" | null;
+  type?: string | null; // types.id (เลขลำดับ เช่น "1")
   startDate: Date;
   endDate: Date;
 };
@@ -51,6 +51,7 @@ export default function DashboardPage() {
 
   const me = trpc.auth.me.useQuery(undefined, { enabled: ready, retry: false });
   const plans = trpc.workPlan.list.useQuery(view, { enabled: ready });
+  const types = trpc.type.list.useQuery(undefined, { enabled: ready });
 
   // token หมดอายุ/ใช้ไม่ได้ → ล้าง token แล้วเด้งกลับหน้า login
   useEffect(() => {
@@ -82,15 +83,24 @@ export default function DashboardPage() {
   );
   const selectedTitle = fmtFullDate(selected);
 
+  // ทั้งแผงรายวันและรายการทั้งเดือน เรียงตามความเร่งด่วนของ status ก่อน (ด่วนสุดขึ้นบน)
+  // status เท่ากันคงลำดับ startDate asc จาก API
+  const monthPlans = sortByStatusPriority(plans.data ?? [], today);
+
   // แผนที่ "ทับ" วันที่เลือก (แผนหลายวันนับทุกวันในช่วง)
-  const dayPlans = (plans.data ?? []).filter(
+  const dayPlans = monthPlans.filter(
     (p) => p.startDate.getTime() <= selected.getTime() && selected.getTime() <= p.endDate.getTime(),
   );
+
+  // ชื่อประเภทจาก table types (id → name) — โหลดไม่ทัน/id ไม่รู้จัก → โชว์ id ไปก่อน
+  const typeNameById = new Map((types.data ?? []).map((t) => [t.id, t.name]));
 
   // แถวแผน — หน้าตาเดียวกันทั้งแผงรายวันและรายการทั้งเดือน (ต่างกันแค่ปุ่มแก้ไข)
   const planRow = (plan: (typeof dayPlans)[number], withEdit: boolean) => {
     const meta = STATUS_META[planStatus(plan, today)];
-    const typeMeta = plan.type ? PLAN_TYPE_META[plan.type] : null;
+    const typeMeta = plan.type
+      ? { ...typeColor(plan.type), label: typeNameById.get(plan.type) ?? plan.type }
+      : null;
     // แก้ได้เฉพาะแผนของตัวเองที่ยังไม่กดเริ่ม (กติกาเดียวกับ workPlan.update ฝั่ง API)
     const editable = withEdit && !isCEO && plan.userId === myId && !plan.actStart;
     return (
@@ -100,7 +110,7 @@ export default function DashboardPage() {
           <div className="plan-name">{plan.name}</div>
           <div className="plan-sub">
             {isCEO && <>{plan.user.name} · </>}
-            {plan.jobId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
+            ไซต์ #{plan.siteId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
           </div>
           {(plan.delayStartReason || plan.delayEndReason) && (
             <div className="plan-delay">
@@ -191,10 +201,10 @@ export default function DashboardPage() {
 
         {plans.isLoading ? (
           <p className="empty-note">กำลังโหลด…</p>
-        ) : (plans.data ?? []).length === 0 ? (
+        ) : monthPlans.length === 0 ? (
           <p className="empty-note">ยังไม่มีแผนงานในเดือนนี้</p>
         ) : (
-          <div className="plan-list">{(plans.data ?? []).map((plan) => planRow(plan, true))}</div>
+          <div className="plan-list">{monthPlans.map((plan) => planRow(plan, true))}</div>
         )}
       </section>
 
@@ -212,6 +222,8 @@ export default function DashboardPage() {
 
 // ---------- modal สร้าง/แก้ไขแผน (Engineer เท่านั้น) ----------
 // โหมดแก้ไข: ส่งเฉพาะ field ที่เปลี่ยนจริง — ตามกติกา "อย่า write field ที่ user ไม่ได้แก้" (AGENT.md)
+// ไซต์งานเลือกจาก dropdown (FK → sites) — ล็อกจนกว่าจะเลือกประเภทงาน แล้วกรองตาม Site.types
+// → แผนใหม่จึงต้องมีประเภทงานเสมอ (แผนเก่าที่ type ว่างยังแก้ field อื่นได้โดยไม่บังคับเติม)
 
 function PlanModal({
   defaultDate,
@@ -223,12 +235,37 @@ function PlanModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
-  const toInput = (d: Date) => d.toISOString().slice(0, 10); // UTC midnight → "YYYY-MM-DD" ตรงวันเสมอ
+
+  // ตัวเลือกประเภทงาน + ไซต์งาน (react-query dedupe กับ query เดียวกันของหน้าอื่น)
+  const types = trpc.type.list.useQuery();
+  const sites = trpc.site.list.useQuery();
 
   const [name, setName] = useState(plan?.name ?? "");
-  const [typeV, setTypeV] = useState<"" | PlanTypeKey>(plan?.type ?? "");
-  const [start, setStart] = useState(toInput(plan?.startDate ?? defaultDate ?? dateOnlyICT(new Date())));
-  const [end, setEnd] = useState(toInput(plan?.endDate ?? defaultDate ?? dateOnlyICT(new Date())));
+  const [typeV, setTypeV] = useState<string>(plan?.type ?? ""); // "" = ยังไม่เลือก / อื่นๆ = types.id
+  const [siteIdV, setSiteIdV] = useState<string>(plan ? String(plan.siteId) : ""); // "" = ยังไม่เลือก
+  // ช่องวันที่พิมพ์เป็น dd/mm/yyyy เอง (คุมช่องเอง เพราะ <input type=date> เนทีฟ
+  // แสดงผลตาม locale เครื่อง บังคับ dd/mm/yyyy ไม่ได้ — pattern เดียวกับหน้า log)
+  const [start, setStart] = useState(fmtFullDate(plan?.startDate ?? defaultDate ?? dateOnlyICT(new Date())));
+  const [end, setEnd] = useState(fmtFullDate(plan?.endDate ?? defaultDate ?? dateOnlyICT(new Date())));
+
+  // dd/mm/yyyy → ISO (null = ยังพิมพ์ไม่ครบ/ไม่ใช่วันจริง) — ใช้ทั้งเช็คก่อน submit และขอบแดงเตือน
+  const startISO = parseDMY(start);
+  const endISO = parseDMY(end);
+  // วันจบก่อนวันเริ่ม — เดิม input type=date กันด้วย min ตอนนี้เช็คเอง (ISO เทียบ string ได้ตรงลำดับวัน)
+  const rangeInvalid = !!(startISO && endISO && endISO < startISO);
+
+  // ตัวเลือกไซต์: กรองตามประเภทที่เลือก (Site.types) — ยังไม่เลือกประเภท = ล็อก dropdown
+  // โหมดแก้ไขแผนเก่าที่ type ว่าง: โชว์ไซต์ปัจจุบันตัวเดียวไว้ให้เห็น (เปลี่ยนไซต์ได้ต่อเมื่อเลือกประเภทก่อน)
+  const siteOptions = (sites.data ?? []).filter((s) =>
+    typeV ? s.types.some((t) => t.id === typeV) : plan && s.id === plan.siteId,
+  );
+
+  // เปลี่ยนประเภท → ไซต์ที่เลือกอยู่ไม่รองรับประเภทใหม่ = ล้างให้เลือกใหม่จากรายการที่กรองแล้ว
+  const changeType = (v: string) => {
+    setTypeV(v);
+    const cur = (sites.data ?? []).find((s) => String(s.id) === siteIdV);
+    if (!cur || !cur.types.some((t) => t.id === v)) setSiteIdV("");
+  };
 
   // สำเร็จ → refresh ทุก query ของ workPlan (ปฏิทิน/รายการ/สิ่งที่ต้องทำ/สรุป ขยับตามกัน)
   const done = {
@@ -244,13 +281,16 @@ function PlanModal({
   const error = create.error ?? update.error;
 
   const submit = () => {
+    // วันที่ยังไม่ครบรูป/ไม่ใช่วันจริง/จบก่อนเริ่ม → ไม่ส่ง (ขอบแดง + hint บอกอยู่ที่ช่องแล้ว)
+    if (!startISO || !endISO || rangeInvalid) return;
     // ส่งเป็น UTC midnight ของวันที่กรอก — ฝั่ง API normalize ด้วย dateOnlyICT อีกชั้น
     if (!plan) {
       create.mutate({
         name: name.trim(),
-        ...(typeV ? { type: typeV } : {}),
-        startDate: new Date(`${start}T00:00:00Z`),
-        endDate: new Date(`${end}T00:00:00Z`),
+        type: typeV, // บังคับเลือกที่ form แล้ว (select required)
+        siteId: Number(siteIdV),
+        startDate: new Date(`${startISO}T00:00:00Z`),
+        endDate: new Date(`${endISO}T00:00:00Z`),
       });
       return;
     }
@@ -258,8 +298,9 @@ function PlanModal({
       id: plan.id,
       ...(name.trim() !== plan.name ? { name: name.trim() } : {}),
       ...(typeV !== (plan.type ?? "") ? { type: typeV || undefined } : {}),
-      ...(start !== toInput(plan.startDate) ? { startDate: new Date(`${start}T00:00:00Z`) } : {}),
-      ...(end !== toInput(plan.endDate) ? { endDate: new Date(`${end}T00:00:00Z`) } : {}),
+      ...(siteIdV !== String(plan.siteId) ? { siteId: Number(siteIdV) } : {}),
+      ...(start !== fmtFullDate(plan.startDate) ? { startDate: new Date(`${startISO}T00:00:00Z`) } : {}),
+      ...(end !== fmtFullDate(plan.endDate) ? { endDate: new Date(`${endISO}T00:00:00Z`) } : {}),
     });
   };
 
@@ -286,40 +327,72 @@ function PlanModal({
           />
         </label>
 
-        {/* Job ID ระบบรันเลขให้อัตโนมัติตอนบันทึก — โหมดแก้ไขโชว์อย่างเดียว แก้ไม่ได้ */}
-        {plan && (
-          <label className="field">
-            Job ID (อัตโนมัติ)
-            <input value={plan.jobId} disabled />
-          </label>
-        )}
-
         <label className="field">
           ประเภทงาน
-          <select value={typeV} onChange={(e) => setTypeV(e.target.value as "" | PlanTypeKey)}>
-            <option value="">— ไม่ระบุ —</option>
-            {PLAN_TYPE_OPTIONS.map((key) => (
-              <option key={key} value={key}>
-                {PLAN_TYPE_META[key].label}
+          {/* required เฉพาะตอนสร้าง — แผนเก่าที่ type ว่างต้องยังแก้ field อื่นได้ (ค่า "" ต้องผ่าน) */}
+          <select value={typeV} onChange={(e) => changeType(e.target.value)} required={!plan}>
+            <option value="" disabled>
+              — เลือกประเภทงาน —
+            </option>
+            {(types.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </select>
         </label>
 
+        {/* ไซต์งาน: ล็อกจนกว่าจะเลือกประเภท แล้วกรองตาม Site.types — disabled แล้ว required ไม่ทำงาน
+            แต่ตอนสร้าง select ประเภทเป็น required อยู่แล้ว เลยไม่มีทางหลุดมา submit ทั้งที่ไซต์ว่าง */}
+        <label className="field">
+          ไซต์งาน
+          <select
+            value={siteIdV}
+            onChange={(e) => setSiteIdV(e.target.value)}
+            required
+            disabled={!typeV}
+          >
+            <option value="">{typeV ? "— เลือกไซต์งาน —" : "เลือกประเภทงานก่อน"}</option>
+            {siteOptions.map((s) => (
+              <option key={s.id} value={String(s.id)}>
+                #{s.id} {s.name}
+              </option>
+            ))}
+          </select>
+          {typeV && !sites.isLoading && siteOptions.length === 0 && (
+            <span className="field-hint">
+              ยังไม่มีไซต์ของประเภทนี้ — สร้างได้จากปุ่ม &quot;+ ไซต์งาน&quot; ในหน้าไซต์งาน
+            </span>
+          )}
+        </label>
+
         <div className="field-row">
           <label className="field">
             วันเริ่ม
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} required />
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
+              maxLength={10}
+              className={start && !startISO ? "invalid" : undefined}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              required
+            />
           </label>
           <label className="field">
             วันจบ
             <input
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
+              maxLength={10}
+              className={end && (!endISO || rangeInvalid) ? "invalid" : undefined}
               value={end}
               onChange={(e) => setEnd(e.target.value)}
               required
-              min={start}
             />
+            {rangeInvalid && <span className="field-hint">วันจบต้องไม่ก่อนวันเริ่ม</span>}
           </label>
         </div>
 
@@ -329,7 +402,12 @@ function PlanModal({
           <button type="button" className="btn-ghost" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary" disabled={pending}>
+          {/* วันที่ยังไม่ครบรูป/จบก่อนเริ่ม → กดไม่ได้ (required เนทีฟกันแค่ช่องว่าง กันรูปผิดไม่ได้) */}
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={pending || !startISO || !endISO || rangeInvalid}
+          >
             {pending ? "กำลังบันทึก…" : plan ? "บันทึกการแก้ไข" : "บันทึกแผน"}
           </button>
         </div>

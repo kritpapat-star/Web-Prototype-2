@@ -13,24 +13,16 @@ import {
   dateOnlyICT,
   planStatus,
   countByStatus,
+  sortByStatusPriority,
+  STATUS_BY_URGENCY,
   STATUS_META,
-  type PlanStatus,
 } from "../lib/status";
 import { fmtDayMonth, fmtFullDate } from "../lib/format";
 
-// ลำดับ chip ในแถบสรุป: งานที่ต้องรีบขึ้นก่อน → งานปกติ → เสร็จแล้ว
-const SUMMARY_ORDER: PlanStatus[] = [
-  "NOT_STARTED_OVERDUE",
-  "IN_PROGRESS_OVERDUE",
-  "NOT_STARTED",
-  "IN_PROGRESS",
-  "COMPLETED",
-];
-
 // โครงข้อมูลเท่าที่ banner ใช้ (แบบเดียวกับ CalendarPlan ใน month-calendar)
 type TodoPlan = {
-  id: string;
-  jobId: string;
+  id: number;
+  siteId: number;
   name: string;
   startDate: Date;
   endDate: Date;
@@ -38,10 +30,10 @@ type TodoPlan = {
   actEnd: Date | null;
   delayStartReason: string | null;
   delayEndReason: string | null;
-  user: { id: string; name: string; color: string };
+  user: { id: number; name: string; color: string };
 };
 
-type ReasonDialog = { planId: string; planName: string; kind: "start" | "finish" } | null;
+type ReasonDialog = { planId: number; planName: string; kind: "start" | "finish" } | null;
 
 export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
   const utils = trpc.useUtils();
@@ -61,8 +53,9 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
 
   const plans = todos.data ?? [];
   const counts = countByStatus(plans, today);
-  // งานค้างขึ้นก่อน ที่เหลือตามวันเริ่ม (server เรียง startDate มาแล้ว — sort นี้ stable)
-  const rows = [...plans].sort((a, b) => Number(isCarryOver(b)) - Number(isCarryOver(a)));
+  // เรียงตามความเร่งด่วนของ status (ลำดับเดียวกับแผงแผนงาน) — งานค้างเป็น overdue อยู่แล้วจึงขึ้นบนเอง
+  // status เท่ากันคงลำดับ startDate asc จาก server
+  const rows = sortByStatusPriority(plans, today);
 
   // เช็ค "ช้ากว่าแผน" ด้วยวันปัจจุบัน ณ ตอนกด (ไม่ใช้ today ที่ fix ตอนเปิดหน้า — เผื่อเปิดค้างข้ามคืน)
   const onStart = (plan: TodoPlan) => {
@@ -105,7 +98,7 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
 
         {/* สรุปประจำวัน — โชว์เฉพาะ status ที่มีจริง กันแถบรก */}
         <div className="sum-chips" aria-label="สรุปประจำวัน">
-          {SUMMARY_ORDER.filter((s) => counts[s] > 0).map((s) => (
+          {STATUS_BY_URGENCY.filter((s) => counts[s] > 0).map((s) => (
             <span
               key={s}
               className="chip"
@@ -141,7 +134,7 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
                   </div>
                   <div className="plan-sub">
                     {isCEO && <>{plan.user.name} · </>}
-                    {plan.jobId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
+                    ไซต์ #{plan.siteId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
                   </div>
                   {(plan.delayStartReason || plan.delayEndReason) && (
                     <div className="plan-delay">

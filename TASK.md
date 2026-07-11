@@ -1,6 +1,6 @@
 # TASK.md — สถานะงาน
 
-> อัปเดตล่าสุด: 7 ก.ค. 2026
+> อัปเดตล่าสุด: 11 ก.ค. 2026
 > กติกา: งานเสร็จให้ย้ายลง Done พร้อมวันที่ / งานใหม่เข้า Backlog ก่อนเสมอ
 
 ## ✅ Done
@@ -64,6 +64,35 @@
       หน้าใหม่ `/sites` (filter chip ประเภท + chip สถานะ, ดึง `workPlan.list`) + dropdown
       ประเภทใน PlanModal + chip ประเภทใน dashboard (CEO เห็นทุกคน / Engineer เฉพาะตัวเอง)
       เป็นการทำ field `type` จริงที่เคยทำนายไว้ใน CONTEXT.md ("เพิ่มทีหลังได้โดยไม่พังโครง")
+- [x] ระบบ audit log — 7 ก.ค. 2026: ตาราง `audit_logs` append-only (migration `20260707023903_add_audit_log`)
+      middleware `auditMutation` ใน `trpc.ts` log ทุก mutation สำเร็จอัตโนมัติ + log login
+      + click telemetry `auditLog.track` จากฝั่ง web (`ClickLogger`) + หน้า "ประวัติการใช้งาน" `/logs`
+- [x] ลบ DEV BYPASS ทั้งหมด — 8 ก.ค. 2026 (commit `503d0c0`): เปิด login จริงทั้งระบบ
+      หน้า login เป็น form จริง + ทุกหน้า guard token — ปิดงาน "เปิด login กลับ" ใน Next
+- [x] ประเภทงานเป็น lookup table — 9 ก.ค. 2026: แทน enum `PlanType` ด้วยตาราง `types`
+      (migrations `20260709000000_plan_type_table` → id เป็นเลขลำดับ `"1"`–`"5"` ใน `20260709070000`
+      → rename เป็น `types` ใน `20260709080000`) + router `type.list` — web ดึงตัวเลือก/ป้ายจาก DB
+      (ห้าม hardcode) สี chip ที่ `plan-types.ts`; เพิ่มประเภท IOT + Software รวมเป็น 5
+- [x] ตาราง `Site` + ประเภทไซต์แบบ m-n — 9 ก.ค. 2026: `sites` (id/name) + ตารางเชื่อม `site_types`
+      (migrations `20260709090000_add_site_table`, `20260709100000_site_types_many_to_many`)
+      — ยังไม่ผูกกับ WorkPlan (relation อยู่ใน Backlog)
+- [x] เปลี่ยน `jobId` → `siteId` — 9 ก.ค. 2026: rename ทั้งระบบ (schema/router/seed/web/docs)
+      migration `20260709110000_rename_job_id_to_site_id`: rename column + sequence
+      (`job_id_seq` → `site_id_seq` คง counter เดิม) + แปลง prefix ข้อมูลเก่า `JOB-` → `SITE-`
+      ยังเป็น string เลขรัน — ไม่ใช่ FK ไป `sites.id` (relation กับ `Site` อยู่ใน Backlog)
+- [x] id เป็นเลขรันล้วน — 10 ก.ค. 2026: `WorkPlan.id`/`Site.id` เป็น Int autoincrement,
+      `WorkPlan.siteId` เป็น Int ตัด prefix `SITE-` (เลขเดิมคงไว้ ยัง gen จาก `site_id_seq`)
+      migration `20260710000000_numeric_run_ids`: renumber `work_plans.id` ตาม `createdAt`
+      + remap `audit_logs.targetId` ของ `workPlan.*` + แปลง `sites.id`/`site_types.siteId`
+      seed ใช้ id คงที่ 1..12 + ดัน `work_plans_id_seq`/`site_id_seq` ต่อท้าย
+      ฝั่ง web โชว์ "ไซต์ #N" และ `search` รับเลขไซต์แบบ `"12"`/`"#5"` (เทียบเท่า — Int ใช้ contains ไม่ได้)
+- [x] `User.id` เป็นเลขรัน — 11 ก.ค. 2026: cuid → Int autoincrement renumber 1..4 ตามลำดับสร้าง
+      (migration `20260711000000_numeric_user_ids` — remap FK `work_plans.userId`/`audit_logs.userId` ตาม)
+      JWT `sub` เป็นเลขแล้ว (token เก่าที่ sub เป็น cuid ถูกตีเป็นไม่ได้ login — login ใหม่รอบเดียว)
+      + zod filter `userId` ใน `workPlan.list`/`auditLog.list` เป็น int + type ฝั่ง web ตาม
+- [x] `SiteType` → implicit m-n — 11 ก.ค. 2026: ลบ model `SiteType`, `Site.types` เป็น `Type[]`
+      (Prisma จัดการตารางเชื่อม `_SiteToType` เอง — migration `20260711044237_site_types_implicit_m2m`)
+      กติกาเปลี่ยน: ลบ `Type` ที่มีไซต์ใช้อยู่ไม่ถูกบล็อกแล้ว (หลุดจากไซต์เงียบๆ) — schema เหลือ 5 models
 
 ## 🔨 Doing
 
@@ -71,15 +100,13 @@
 
 ## ⏭️ Next (เรียงตามลำดับแนะนำ)
 
-1. [ ] เปิด login กลับ: ลบ DEV BYPASS ทั้ง 4 จุด (ก่อน demo/deploy ทุกกรณี — ดู SECURITY.md)
-   `apps/api/src/trpc.ts` + `apps/web/src/app/page.tsx` + `dashboard/page.tsx` + `sites/page.tsx`
-2. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` แล้ว — เหลือ dropdown ฝั่งเว็บ)
-3. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
-4. [ ] build ทดสอบ docker image ทั้งคู่จริง (`docker compose build`) — Dockerfile เขียนแล้วแต่ยังไม่เคย build
+1. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)
+2. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
+3. [ ] build ทดสอบ docker image ทั้งคู่จริง (`docker compose build`) — Dockerfile เขียนแล้วแต่ยังไม่เคย build
 
 ## 📦 Backlog
 
-- [ ] Job table + relation จาก `WorkPlan.jobId`
+- [ ] relation จาก `WorkPlan.siteId` → table `Site` (ตอนนี้ยังเป็นเลขรันอิสระ (Int) ไม่ใช่ FK)
 - [ ] Rate limit ที่ `auth.login` (ก่อนเปิด internet)
 - [ ] เปลี่ยน token localStorage → httpOnly cookie
 - [ ] หน้าเปลี่ยนรหัสผ่าน + บังคับเปลี่ยนครั้งแรก

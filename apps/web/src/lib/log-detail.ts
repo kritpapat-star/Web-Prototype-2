@@ -15,10 +15,20 @@ const PAGE_NAMES: Record<string, string> = {
   "/sites": "ไซต์งาน",
 };
 
+// รหัสประเภท (types.id) → ชื่อแสดงผล — ชุดเดียวกับ table types
+// (describeLog เป็น pure function เลย snapshot ไว้ที่นี่ — ประเภทที่ไม่รู้จักโชว์รหัสดิบแทน)
+// log เป็น append-only: ต้อง map รหัสตัวอักษรยุค enum เดิม (SOLAR, …) ที่ค้างใน log เก่าด้วย
 const TYPE_NAMES: Record<string, string> = {
-  SOLAR: "โซลาร์",
+  "1": "Solar Cell",
+  "2": "CCTV",
+  "3": "Network",
+  "4": "IOT",
+  "5": "Software",
+  SOLAR: "Solar Cell",
   CCTV: "CCTV",
-  NETWORK: "เน็ตเวิร์ก",
+  NETWORK: "Network",
+  IOT: "IOT",
+  SOFTWARE: "Software",
 };
 
 export type LogDescription = { main: string; sub?: string };
@@ -53,7 +63,7 @@ export function describeLog(log: LogLike): LogDescription {
     case "workPlan.create": {
       const name = typeof d.name === "string" ? d.name : "";
       const sub = [
-        typeof d.type === "string" ? TYPE_NAMES[d.type] : "",
+        typeof d.type === "string" ? (TYPE_NAMES[d.type] ?? d.type) : "",
         [fmtDate(d.startDate), fmtDate(d.endDate)].filter(Boolean).join(" – "),
       ]
         .filter(Boolean)
@@ -65,8 +75,8 @@ export function describeLog(log: LogLike): LogDescription {
     case "workPlan.update": {
       const parts: string[] = [];
       if (typeof d.name === "string") parts.push(`เปลี่ยนชื่อ → “${d.name}”`);
-      if (typeof d.type === "string" && TYPE_NAMES[d.type])
-        parts.push(`เปลี่ยนประเภท → ${TYPE_NAMES[d.type]}`);
+      if (typeof d.type === "string" && d.type)
+        parts.push(`เปลี่ยนประเภท → ${TYPE_NAMES[d.type] ?? d.type}`);
       const start = fmtDate(d.startDate);
       if (start) parts.push(`เลื่อนวันเริ่ม → ${start}`);
       const end = fmtDate(d.endDate);

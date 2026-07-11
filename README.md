@@ -50,14 +50,11 @@ docker compose up -d db
 # 3) migrate + seed
 cd apps/api
 pnpm db:migrate
-pnpm db:seed           # ได้ user: nongnoom (CEO) / tawan / earth / ohm รหัส 1234 (dev เท่านั้น)
+pnpm db:seed           # ได้ user: nongnoom (CEO) / tawan / earth / ohm — รหัส dev ดูใน apps/api/prisma/seed.ts
 
 # 4) รัน API + web พร้อมกันจาก root
 pnpm dev               # api → :4000, web → :3000
 ```
-
-> ⚠️ ตอนนี้เปิด **DEV BYPASS** ชั่วคราว: เข้าเว็บแล้วข้ามหน้า login เป็น user `tawan` อัตโนมัติ
-> (วิธีเอาออกดูใน comment ทั้ง 3 จุด + TASK.md — ต้องลบก่อน demo/deploy จริง)
 
 ## เอกสารที่ควรอ่านตามลำดับ
 

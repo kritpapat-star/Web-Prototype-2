@@ -12,8 +12,10 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error("ต้องตั้ง JWT_SECRET ใน .env");
 
 // payload ที่เราใส่ไว้ใน token ตอน login
+// sub เป็นเลขรัน users.id (Int) — จงใจไม่ตาม RFC ที่ให้ sub เป็น string
+// เพราะใช้ token ภายในระบบเดียว และ query Prisma ได้ตรงๆ ไม่ต้อง parse
 export type JwtPayload = {
-  sub: string; // user id
+  sub: number; // user id (เลขรัน 1, 2, 3, …)
   role: "CEO" | "ENGINEER";
   name: string;
 };
@@ -29,7 +31,10 @@ export async function createContext({ req }: { req: { headers: Record<string, st
 
   if (token) {
     try {
-      user = jwt.verify(token, JWT_SECRET) as JwtPayload;
+      // ผ่าน unknown เพราะ type ของ lib กำหนด sub?: string แต่ของเรา sub เป็นเลขรัน (ดู JwtPayload)
+      user = jwt.verify(token, JWT_SECRET) as unknown as JwtPayload;
+      // token รุ่นเก่า sub เป็น cuid (string) — ชี้ user ที่ renumber เป็นเลขไปแล้ว ให้ login ใหม่
+      if (typeof user.sub !== "number") user = null;
     } catch {
       user = null; // token หมดอายุ/ปลอม — ปฏิบัติเหมือนไม่ได้ login
     }
@@ -59,13 +64,13 @@ const auditMutation = t.middleware(async ({ ctx, type, path, getRawInput, next }
       // raw input ผ่าน zod ของ procedure มาแล้ว (result.ok) — แปลงผ่าน JSON ให้ Date เป็น ISO string
       const rawInput = await getRawInput();
       const detail = rawInput === undefined ? undefined : JSON.parse(JSON.stringify(rawInput));
+      // id เป็นได้ทั้ง string (เช่น types.id) และ number (เลขรัน เช่น WorkPlan) — targetId เก็บเป็น text เสมอ
       const data = result.data as { id?: unknown } | undefined;
+      const idOf = (v: unknown) =>
+        typeof v === "string" ? v : typeof v === "number" ? String(v) : null;
       const targetId =
-        typeof detail?.id === "string"
-          ? detail.id // update/start/finish ส่ง id มาใน input
-          : typeof data?.id === "string"
-            ? data.id // create เพิ่งได้ id จากผลลัพธ์
-            : null;
+        idOf(detail?.id) ?? // update/start/finish ส่ง id มาใน input
+        idOf(data?.id); // create เพิ่งได้ id จากผลลัพธ์
 
       await prisma.auditLog.create({
         data: { userId: ctx.user.sub, action: path, targetId, detail },

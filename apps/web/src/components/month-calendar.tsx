@@ -8,13 +8,13 @@ import { planStatus, STATUS_META } from "../lib/status";
 import { buildWeekBars, sortForLanes, type WeekBar } from "../lib/calendar-lanes";
 
 export type CalendarPlan = {
-  id: string;
+  id: number;
   name: string;
   startDate: Date;
   endDate: Date;
   actStart: Date | null;
   actEnd: Date | null;
-  user: { id: string; name: string; color: string };
+  user: { id: number; name: string; color: string };
 };
 
 const DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];

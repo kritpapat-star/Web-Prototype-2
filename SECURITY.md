@@ -4,7 +4,7 @@
 
 - **Password:** เก็บเฉพาะ `passwordHash` จาก bcrypt (cost 10) — **ห้ามเก็บ plaintext ทุกกรณี**
 - **Login:** ตอบ error ข้อความเดียวกันเสมอไม่ว่า username ไม่มีหรือรหัสผิด (กัน user enumeration)
-- **JWT:** อายุ 12 ชม. (ครอบ 1 กะงาน) payload มีแค่ `{ sub, role, name }` — ห้ามใส่ข้อมูล sensitive
+- **JWT:** อายุ 12 ชม. (ครอบ 1 กะงาน) payload มีแค่ `{ sub, role, name }` (`sub` = user id เลขรัน Int) — ห้ามใส่ข้อมูล sensitive
   เพราะ payload อ่านได้โดยไม่ต้องรู้ secret (แค่ verify ไม่ได้)
 - Token หมดอายุ/ปลอม → context ตีเป็น "ไม่ได้ login" → `UNAUTHORIZED` (fail closed)
 
@@ -44,15 +44,13 @@
    ตัดสินใจ: ยอมรับได้สำหรับระบบภายใน user หลักสิบคน — ทบทวนเมื่อเปิดใช้นอกองค์กร
 2. **ไม่มี refresh token** — หมด 12 ชม. login ใหม่ ยอมรับได้ในบริบทงานรายวัน
 3. **ไม่มี rate limit ที่ `auth.login`** — ควรเพิ่ม (เช่น `@fastify/rate-limit`) ก่อนเปิด internet จริง
-4. **รหัส seed `1234`** — dev เท่านั้น ห้ามหลุดไป production; ตอน onboard จริงต้องบังคับตั้งรหัสใหม่
-5. **DEV BYPASS login (ชั่วคราว — ตั้งแต่ 4 ก.ค. 2026)** — request ที่ไม่มี token ถูกนับเป็น `tawan`
-   และหน้า login ถูกข้าม (3 จุด: `apps/api/src/trpc.ts` / `apps/web/src/app/page.tsx` /
-   `dashboard/page.tsx`) — **auth ทั้งระบบถูกปิดอยู่โดยเจตนา ห้ามออกนอกเครื่อง dev เด็ดขาด**
-   งานลบอยู่ใน TASK.md Next ข้อ 1
+4. **รหัสผ่าน seed ชุดเดียวทุก user** (ดู `DEV_PASSWORD` ใน `apps/api/prisma/seed.ts`) — dev เท่านั้น
+   ห้ามหลุดไป production; ตอน onboard จริงต้องบังคับตั้งรหัสใหม่
+
+(DEV BYPASS login ที่เคยเปิดชั่วคราว 4 ก.ค. 2026 **ลบออกแล้ว** — login จริงทำงานทั้งระบบตั้งแต่ 8 ก.ค. 2026)
 
 ## Checklist ก่อน deploy production
 
-- [ ] **ลบ DEV BYPASS ทั้ง 3 จุด** (`apps/api/src/trpc.ts` / `apps/web/src/app/page.tsx` / `dashboard/page.tsx`)
 - [ ] `JWT_SECRET` สุ่มยาว ≥ 32 ตัวอักษร (ไม่ใช่คำเดาได้)
 - [ ] HTTPS ครบทั้ง 2 โดเมน (web + api)
 - [ ] เปลี่ยนรหัสผ่าน seed ทุก user / ปิด seed ใน production

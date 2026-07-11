@@ -3,7 +3,8 @@
 // pure function ตาม TESTING.md — ห้ามแตะ DOM/fetch ในไฟล์นี้
 // วันที่ทั้งหมดเป็น UTC midnight (= วันตามเวลาไทย, ดู status.ts)
 
-export type BarSpan = { id: string; startDate: Date; endDate: Date };
+// id รับทั้ง string และ number — WorkPlan ใช้เลขรัน ส่วน test/ผู้เรียกอื่นใช้ string ได้
+export type BarSpan = { id: string | number; startDate: Date; endDate: Date };
 
 export type WeekBar<T extends BarSpan> = {
   plan: T;
@@ -21,7 +22,7 @@ export function sortForLanes<T extends BarSpan>(plans: T[]): T[] {
     (a, b) =>
       a.startDate.getTime() - b.startDate.getTime() ||
       b.endDate.getTime() - a.endDate.getTime() ||
-      a.id.localeCompare(b.id),
+      String(a.id).localeCompare(String(b.id)),
   );
 }
 

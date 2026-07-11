@@ -8,16 +8,50 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { PrismaClient } from "@prisma/client";
 import { router, protectedProcedure, engineerProcedure } from "../trpc";
 import { dateOnlyICT } from "../lib/dates";
 
+// type ต้องมีจริงใน table types — เช็คเองเพื่อให้ error เป็นภาษาไทย แทน FK error ดิบจาก Postgres
+async function assertTypeExists(prisma: PrismaClient, typeId: string | undefined) {
+  if (!typeId) return;
+  const found = await prisma.type.findUnique({ where: { id: typeId } });
+  if (!found) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "ประเภทงานไม่ถูกต้อง" });
+  }
+}
+
+// ไซต์ต้องมีจริง + รองรับประเภทงานของแผน (dropdown ฝั่ง web กรองให้แล้ว — เช็คซ้ำกันยิงตรง/client เก่า)
+// type เป็น null ได้เฉพาะแผนเก่าก่อนบังคับประเภท (ตอน update ที่ไม่ได้แตะ type) — เช็คแค่ไซต์มีจริง
+async function assertSiteMatchesType(
+  prisma: PrismaClient,
+  siteId: number,
+  typeId: string | null,
+) {
+  const site = await prisma.site.findUnique({
+    where: { id: siteId },
+    select: { types: { select: { id: true } } },
+  });
+  if (!site) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "ไม่พบไซต์งานที่เลือก" });
+  }
+  if (typeId && !site.types.some((t) => t.id === typeId)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "ไซต์งานที่เลือกไม่รองรับประเภทงานนี้",
+    });
+  }
+}
+
 // ---------- zod schemas ----------
 
-// jobId ไม่รับจาก client แล้ว — API gen เลขรันเอง (JOB-001, JOB-002, …) ตอน create
-// type เป็นประเภทงาน (SOLAR/CCTV/NETWORK) — optional, เลือกจาก dropdown ตอนสร้าง/แก้
+// siteId เลือกจาก dropdown (FK → sites.id) — เลิก gen จาก sequence แล้ว (11 ก.ค. 2026)
+// type อ้าง types.id (เลขลำดับ เช่น "1") — บังคับตอน create เพราะ dropdown ไซต์กรองตามประเภท
+// (แผนเก่าที่ type เป็น null ยังอยู่ได้ — update ไม่บังคับเติม) ตัวเลือกมาจาก type.list ไม่ hardcode
 const planFields = z.object({
   name: z.string().min(1, "ต้องระบุชื่อแผนงาน").max(200),
-  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(),
+  type: z.string().min(1, "ต้องเลือกประเภทงาน"),
+  siteId: z.number().int().positive(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
 });
@@ -25,16 +59,23 @@ const planFields = z.object({
 const monthInput = z.object({
   year: z.number().int().min(2020).max(2100),
   month: z.number().int().min(1).max(12), // 1-12
-  userId: z.string().optional(), // CEO ใช้ filter รายคน / Engineer ห้ามส่ง
-  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(), // filter ตามประเภทงาน (หน้าไซต์งาน)
+  userId: z.number().int().optional(), // CEO ใช้ filter รายคน / Engineer ห้ามส่ง
+  type: z.string().min(1).optional(), // filter ตาม types.id (หน้าไซต์งาน)
 });
 
-// ค้นหาข้ามเดือน (หน้าไซต์งาน) — q ค้นชื่อแผน + Job ID, type กรองร่วม (optional)
+// ค้นหาข้ามเดือน (หน้าไซต์งาน) — q ค้นชื่อแผน + เลขไซต์, type กรองร่วม (optional)
 // แยกจาก monthInput เพื่อไม่ให้กระทบ window รายเดือนของ list (ใช้กับปฏิทิน dashboard ด้วย)
 const searchInput = z.object({
   q: z.string().trim().min(2, "พิมพ์อย่างน้อย 2 ตัวอักษร"),
-  type: z.enum(["SOLAR", "CCTV", "NETWORK"]).optional(),
+  type: z.string().min(1).optional(),
 });
+
+// q ที่เป็นเลขไซต์: "12" หรือ "#5" (ใส่ # ช่วยให้เลขหลักเดียวผ่าน min 2 ตัวอักษรได้)
+// siteId เป็น Int แล้ว — contains ใช้ไม่ได้ เลยเทียบเท่ากับเลขที่แกะออกมาแทน
+function parseSiteIdQuery(q: string): number | null {
+  const m = /^#?(\d+)$/.exec(q);
+  return m ? Number(m[1]) : null;
+}
 
 // ---------- router ----------
 
@@ -73,7 +114,7 @@ export const workPlanRouter = router({
 
   // ============================================================
   // SEARCH — ค้นหาแผนงานข้ามเดือน (หน้าไซต์งาน)
-  //   ค้นจาก name + jobId (case-insensitive contains)
+  //   ค้นจาก name (case-insensitive contains) + เลขไซต์ (เทียบเท่าเมื่อ q เป็นเลข/#เลข)
   //   type filter ใช้ร่วมกับผลค้นหาได้
   //   Engineer: เห็นเฉพาะของตัวเอง / CEO: เห็นทุกคน (RBAC เหมือน list)
   //   ไม่จำกัดเดือน / ไม่จำกัดจำนวนผลลัพธ์
@@ -83,6 +124,7 @@ export const workPlanRouter = router({
     const userFilter = ctx.user.role === "ENGINEER" ? { userId: ctx.user.sub } : {};
 
     const q = input.q;
+    const siteIdQuery = parseSiteIdQuery(q);
 
     return ctx.prisma.workPlan.findMany({
       where: {
@@ -90,7 +132,7 @@ export const workPlanRouter = router({
         ...(input.type ? { type: input.type } : {}),
         OR: [
           { name: { contains: q, mode: "insensitive" } },
-          { jobId: { contains: q, mode: "insensitive" } },
+          ...(siteIdQuery !== null ? [{ siteId: siteIdQuery }] : []),
         ],
       },
       include: {
@@ -99,6 +141,24 @@ export const workPlanRouter = router({
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     });
   }),
+  // ============================================================
+  // BY SITE — ประวัติแผนงานทั้งหมดของไซต์ (หน้า /sites/[id])
+  //   ไม่จำกัดเดือน — เรียงใหม่→เก่า (เป็น "ประวัติ" ต่างจาก list/search ที่เรียงเก่า→ใหม่)
+  //   จงใจ "ไม่" กรองตาม user: ประวัติไซต์เป็นข้อมูลกลางของไซต์ ทุก role เห็นแผนของทุกคน
+  //   (ข้อยกเว้นจาก pattern "Engineer เห็นเฉพาะของตัวเอง" ของ list/search/todo — view-only จึงไม่ชน RBAC lock)
+  // ============================================================
+  bySite: protectedProcedure
+    .input(z.object({ siteId: z.number().int().positive() }))
+    .query(({ ctx, input }) =>
+      ctx.prisma.workPlan.findMany({
+        where: { siteId: input.siteId },
+        include: {
+          user: { select: { id: true, name: true, color: true } }, // shape เดียวกับ list → ใช้ helper status/สีเดิมได้
+        },
+        orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
+      }),
+    ),
+
   // ============================================================
   // TODO — banner "สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน"
   //   คืน: แผนที่ทับวันนี้ + แผนค้างจากวันก่อน (เลยช่วงแผนแล้วยังไม่ปิดงาน)
@@ -138,13 +198,11 @@ export const workPlanRouter = router({
         message: "วันจบต้องไม่มาก่อนวันเริ่ม",
       });
     }
-    // Job ID รันเลขอัตโนมัติจาก sequence ใน Postgres — กันเลขชนกันแม้สร้างพร้อมกัน
-    const [{ nextval }] =
-      await ctx.prisma.$queryRaw<[{ nextval: bigint }]>`SELECT nextval('job_id_seq')`;
-    const jobId = `JOB-${String(nextval).padStart(3, "0")}`;
+    await assertTypeExists(ctx.prisma, input.type);
+    await assertSiteMatchesType(ctx.prisma, input.siteId, input.type);
 
     return ctx.prisma.workPlan.create({
-      data: { ...input, jobId, startDate, endDate, userId: ctx.user.sub }, // เจ้าของ = คน login ไม่รับจาก client
+      data: { ...input, startDate, endDate, userId: ctx.user.sub }, // เจ้าของ = คน login ไม่รับจาก client
     });
   }),
 
@@ -152,7 +210,7 @@ export const workPlanRouter = router({
   // UPDATE — แก้ชื่อ/เลื่อนวันแผน (ก่อนเริ่มงานเท่านั้น)
   // ============================================================
   update: engineerProcedure
-    .input(planFields.partial().extend({ id: z.string() }))
+    .input(planFields.partial().extend({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
       if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
@@ -172,6 +230,15 @@ export const workPlanRouter = router({
       if (endDate < startDate) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "วันจบต้องไม่มาก่อนวันเริ่ม" });
       }
+      await assertTypeExists(ctx.prisma, input.type);
+      // แตะไซต์หรือประเภท → เช็คคู่ site↔type ตามค่าสุดท้ายหลังแก้ (ที่ไม่ส่งใช้ค่าเดิมใน DB)
+      if (input.siteId !== undefined || input.type !== undefined) {
+        await assertSiteMatchesType(
+          ctx.prisma,
+          input.siteId ?? plan.siteId,
+          input.type ?? plan.type,
+        );
+      }
 
       const { id, ...data } = input;
       return ctx.prisma.workPlan.update({
@@ -185,7 +252,7 @@ export const workPlanRouter = router({
   //   เริ่มช้ากว่าแผน → บังคับกรอก delayStartReason
   // ============================================================
   start: engineerProcedure
-    .input(z.object({ id: z.string(), delayStartReason: z.string().max(500).optional() }))
+    .input(z.object({ id: z.number().int().positive(), delayStartReason: z.string().max(500).optional() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
       if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
@@ -220,7 +287,7 @@ export const workPlanRouter = router({
   //   จบช้ากว่าแผน → บังคับกรอก delayEndReason
   // ============================================================
   finish: engineerProcedure
-    .input(z.object({ id: z.string(), delayEndReason: z.string().max(500).optional() }))
+    .input(z.object({ id: z.number().int().positive(), delayEndReason: z.string().max(500).optional() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
       if (!plan) throw new TRPCError({ code: "NOT_FOUND" });

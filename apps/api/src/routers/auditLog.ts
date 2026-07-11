@@ -18,7 +18,7 @@ export const auditLogRouter = router({
   list: protectedProcedure
     .input(
       z.object({
-        userId: z.string().optional(), // filter รายคน (CEO เท่านั้น — engineer ถูกบังคับเป็นของตัวเอง)
+        userId: z.number().int().optional(), // filter รายคน (CEO เท่านั้น — engineer ถูกบังคับเป็นของตัวเอง)
         from: z.date().optional(), // gte — รวมตั้งแต่ instant นี้
         to: z.date().optional(), // lt — ไม่รวม instant นี้ (web ส่งต้นวันถัดไปมาให้ครอบทั้งวัน "ถึง")
         limit: z.number().int().min(1).max(200).default(100),
@@ -53,7 +53,7 @@ export const auditLogRouter = router({
   // ============================================================
   // TRACK — รับ log การคลิกจากฝั่ง web เป็นก้อน (batch) แล้วเขียนลง audit_logs
   // action ปกติเป็น "ui.click", detail = { page, label, tag, at } — เก็บแค่ตัวตนของ element
-  // (ห้ามมีค่าใน input field / password) actor มาจาก ctx.user (dev-bypass = tawan)
+  // (ห้ามมีค่าใน input field / password) actor มาจาก ctx.user
   // หมายเหตุ: middleware auditMutation ใน trpc.ts "ข้าม" path นี้ กันเขียน log ซ้อน
   // ============================================================
   track: protectedProcedure
