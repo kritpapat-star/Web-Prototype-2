@@ -13,6 +13,10 @@ RUN pnpm install --frozen-lockfile --filter @repo/api
 COPY apps/api apps/api
 RUN pnpm --filter @repo/api exec prisma generate
 
+# ตั้ง "หลัง" pnpm install — ถ้าตั้งก่อน pnpm จะข้าม devDependencies (tsx/prisma ที่ CMD ใช้)
+# เปิด guard ฝั่ง production: JWT_SECRET/WEB_ORIGIN อ่อนหรือขาด = ไม่ start, seed ต้องมี SEED_PASSWORD
+ENV NODE_ENV=production
+
 WORKDIR /repo/apps/api
 EXPOSE 4000
 # migrate deploy ก่อน start — idempotent รันซ้ำตอน restart ได้

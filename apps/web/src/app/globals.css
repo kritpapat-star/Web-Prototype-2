@@ -822,6 +822,31 @@ input {
   background: #f5f5fa;
 }
 
+/* ปุ่มลบ (โทนแดง) — ใช้ทั้ง modal แก้ไขแผนและหัวหน้า site detail */
+.btn-danger {
+  background: #fff;
+  border: 1px solid #f0c4c4;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  cursor: pointer;
+  color: #d63b3b;
+}
+
+/* ใน modal (flex-end) ดันชิดซ้าย ให้ห่างจากปุ่มยกเลิก/บันทึก กันกดพลาด */
+.modal-actions .btn-danger {
+  margin-right: auto;
+}
+
+.btn-danger:hover {
+  background: #fdf1f1;
+}
+
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ---------- สรุปงานประจำวัน ---------- */
 
 .sum-tiles {

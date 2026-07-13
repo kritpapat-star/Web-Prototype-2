@@ -15,9 +15,15 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// รหัสผ่าน dev สำหรับทุก user ใน seed
-// (production ต้องเปลี่ยน + บังคับตั้งรหัสใหม่)
+// รหัสผ่านเริ่มต้นของ user ที่ seed "สร้างใหม่" เท่านั้น — user ที่มีอยู่แล้ว
+// ไม่ถูก reset รหัส (upsert ด้านล่างไม่ write passwordHash ตอน update)
+// production: ห้ามใช้ค่า dev — ต้องส่ง SEED_PASSWORD มาเอง แล้วเปลี่ยนรายคนต่อด้วย
+// `pnpm user:password <username> <รหัสใหม่>` (ดู SECURITY.md / DEPLOY.md)
 const DEV_PASSWORD = "Uu5100785";
+const SEED_PASSWORD = process.env.SEED_PASSWORD || DEV_PASSWORD;
+if (process.env.NODE_ENV === "production" && !process.env.SEED_PASSWORD) {
+  throw new Error("production ต้องตั้ง SEED_PASSWORD ก่อนรัน seed — ห้ามใช้รหัส dev (ดู DEPLOY.md)");
+}
 
 // helper: สร้าง Date แบบ UTC เที่ยงคืน สำหรับ column @db.Date
 const d = (day: number, month = 7, year = 2026) =>
@@ -28,7 +34,7 @@ const t = (day: number, hour: number, minute = 0, month = 7, year = 2026) =>
   new Date(Date.UTC(year, month - 1, day, hour - 7, minute)); // ICT = UTC+7
 
 async function main() {
-  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
   // ---------- Types (lookup table — id เป็นเลขลำดับคงที่ ใช้เป็นค่า work_plans.type) ----------
   // ชุดเดียวกับใน migration — upsert กัน drift (จำกัด ~5 ประเภท เรียงตาม id ดู schema.prisma)
@@ -44,27 +50,29 @@ async function main() {
   }
 
   // ---------- Users (upsert คีย์ username) ----------
+  // ⚠️ update ไม่มี passwordHash โดยตั้งใจ — รัน seed ซ้ำต้องไม่ reset รหัสที่ user เปลี่ยนไปแล้ว
+  // (เปลี่ยนรหัส user เดิมใช้ `pnpm user:password` แทน)
   await prisma.user.upsert({
     where: { username: "nongnoom" },
-    update: { passwordHash, name: "nongnoom", role: Role.CEO, color: "#6366f1" },
+    update: { name: "nongnoom", role: Role.CEO, color: "#6366f1" },
     create: { username: "nongnoom", passwordHash, name: "nongnoom", role: Role.CEO, color: "#6366f1" },
   });
 
   await prisma.user.upsert({
     where: { username: "tawan" },
-    update: { passwordHash, name: "Tawan", role: Role.ENGINEER, color: "#0ea5e9" },
+    update: { name: "Tawan", role: Role.ENGINEER, color: "#0ea5e9" },
     create: { username: "tawan", passwordHash, name: "Tawan", role: Role.ENGINEER, color: "#0ea5e9" },
   });
 
   await prisma.user.upsert({
     where: { username: "earth" },
-    update: { passwordHash, name: "Earth", role: Role.ENGINEER, color: "#f59e0b" },
+    update: { name: "Earth", role: Role.ENGINEER, color: "#f59e0b" },
     create: { username: "earth", passwordHash, name: "Earth", role: Role.ENGINEER, color: "#f59e0b" },
   });
 
   await prisma.user.upsert({
     where: { username: "ohm" },
-    update: { passwordHash, name: "Ohm", role: Role.ENGINEER, color: "#10b981" },
+    update: { name: "Ohm", role: Role.ENGINEER, color: "#10b981" },
     create: { username: "ohm", passwordHash, name: "Ohm", role: Role.ENGINEER, color: "#10b981" },
   });
 

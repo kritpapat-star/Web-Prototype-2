@@ -40,13 +40,17 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
   const todos = trpc.workPlan.todo.useQuery();
   const [dialog, setDialog] = useState<ReasonDialog>(null);
 
-  // เริ่ม/จบงานสำเร็จ → refresh ทั้ง todo และ list (ปฏิทิน + แผงรายวันต้องขยับตาม)
+  // เริ่ม/จบ/ยกเลิกเริ่มงานสำเร็จ → refresh ทั้ง todo และ list (ปฏิทิน + แผงรายวันต้องขยับตาม)
   const invalidate = () => utils.workPlan.invalidate();
   const start = trpc.workPlan.start.useMutation({ onSuccess: invalidate });
   const finish = trpc.workPlan.finish.useMutation({ onSuccess: invalidate });
+  const unstart = trpc.workPlan.unstart.useMutation({ onSuccess: invalidate });
 
-  const acting = start.isPending || finish.isPending;
-  const actError = start.error?.message ?? finish.error?.message;
+  // ยกเลิกเริ่มงานเป็นสองจังหวะ (กดครั้งแรก = ขอยืนยัน) — เก็บ id แผนที่กำลังรอยืนยัน
+  const [confirmUnstartId, setConfirmUnstartId] = useState<number | null>(null);
+
+  const acting = start.isPending || finish.isPending || unstart.isPending;
+  const actError = start.error?.message ?? finish.error?.message ?? unstart.error?.message;
 
   // งานค้างจากวันก่อน = ช่วงแผนผ่านไปแล้วแต่ยังไม่กดจบงาน
   const isCarryOver = (p: TodoPlan) => !p.actEnd && p.endDate < today;
@@ -61,6 +65,8 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
   const onStart = (plan: TodoPlan) => {
     start.reset();
     finish.reset();
+    unstart.reset();
+    setConfirmUnstartId(null);
     if (dateOnlyICT(new Date()) > plan.startDate) {
       setDialog({ planId: plan.id, planName: plan.name, kind: "start" });
     } else {
@@ -71,11 +77,25 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
   const onFinish = (plan: TodoPlan) => {
     start.reset();
     finish.reset();
+    unstart.reset();
+    setConfirmUnstartId(null);
     if (dateOnlyICT(new Date()) > plan.endDate) {
       setDialog({ planId: plan.id, planName: plan.name, kind: "finish" });
     } else {
       finish.mutate({ id: plan.id });
     }
+  };
+
+  // กดเริ่มผิดแผน → ยกเลิกกลับเป็น "ยังไม่เริ่ม" (ล้างเหตุผลเริ่มช้าด้วย) แล้วค่อยแก้/ลบตามกติกาเดิม
+  const onUnstart = (plan: TodoPlan) => {
+    start.reset();
+    finish.reset();
+    unstart.reset();
+    if (confirmUnstartId !== plan.id) {
+      setConfirmUnstartId(plan.id); // จังหวะแรก — เปลี่ยนปุ่มเป็นขอยืนยัน
+      return;
+    }
+    unstart.mutate({ id: plan.id }, { onSuccess: () => setConfirmUnstartId(null) });
   };
 
   const submitReason = (reason: string) => {
@@ -153,9 +173,20 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
                   </button>
                 )}
                 {!isCEO && plan.actStart && !plan.actEnd && (
-                  <button className="btn-primary btn-sm" disabled={acting} onClick={() => onFinish(plan)}>
-                    จบงาน
-                  </button>
+                  <>
+                    <button className="btn-primary btn-sm" disabled={acting} onClick={() => onFinish(plan)}>
+                      จบงาน
+                    </button>
+                    {/* กดเริ่มผิด → ถอยกลับเป็น "ยังไม่เริ่ม" (สองจังหวะกันมือลั่น)
+                        จากนั้นแผนกลับมาแก้/ลบได้ตามกติกาเดิม — แผนที่จบแล้วไม่มีปุ่มนี้ */}
+                    <button className="btn-danger btn-sm" disabled={acting} onClick={() => onUnstart(plan)}>
+                      {unstart.isPending && confirmUnstartId === plan.id
+                        ? "กำลังยกเลิก…"
+                        : confirmUnstartId === plan.id
+                          ? "ยืนยันยกเลิก?"
+                          : "ยกเลิกเริ่มงาน"}
+                    </button>
+                  </>
                 )}
               </div>
             );

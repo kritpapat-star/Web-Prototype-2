@@ -43,16 +43,27 @@
    ทางยกระดับ: httpOnly cookie ที่ api set (ต้องเปิด `credentials` ทั้ง CORS และ tRPC link)
    ตัดสินใจ: ยอมรับได้สำหรับระบบภายใน user หลักสิบคน — ทบทวนเมื่อเปิดใช้นอกองค์กร
 2. **ไม่มี refresh token** — หมด 12 ชม. login ใหม่ ยอมรับได้ในบริบทงานรายวัน
-3. **ไม่มี rate limit ที่ `auth.login`** — ควรเพิ่ม (เช่น `@fastify/rate-limit`) ก่อนเปิด internet จริง
-4. **รหัสผ่าน seed ชุดเดียวทุก user** (ดู `DEV_PASSWORD` ใน `apps/api/prisma/seed.ts`) — dev เท่านั้น
-   ห้ามหลุดไป production; ตอน onboard จริงต้องบังคับตั้งรหัสใหม่
+3. ~~ไม่มี rate limit ที่ `auth.login`~~ — **เพิ่มแล้ว 13 ก.ค. 2026**: นับเฉพาะครั้งที่ผิด
+   ต่อคู่ ip+username — ผิด 5 ครั้ง ล็อก 15 นาที (in-memory ใน `routers/auth.ts` —
+   พอสำหรับ api instance เดียว ถ้า scale หลาย instance ต้องย้ายไป store กลาง)
+4. **รหัสผ่าน seed ชุดเดียวทุก user** — ลดความเสี่ยงแล้ว 13 ก.ค. 2026:
+   - production ต้องตั้ง `SEED_PASSWORD` เอง ไม่งั้น seed ไม่ยอมรัน (guard เช็ค `NODE_ENV`)
+   - seed รันซ้ำ**ไม่ reset รหัส user เดิม** (upsert ไม่ write `passwordHash` ตอน update)
+   - เปลี่ยนรหัสรายคน: `pnpm user:password <username> <รหัสใหม่>` (`apps/api/scripts/set-password.ts`)
+   ยังค้าง: หน้าเปลี่ยนรหัสผ่าน + บังคับเปลี่ยนครั้งแรกใน UI (อยู่ใน Backlog ของ TASK.md)
 
 (DEV BYPASS login ที่เคยเปิดชั่วคราว 4 ก.ค. 2026 **ลบออกแล้ว** — login จริงทำงานทั้งระบบตั้งแต่ 8 ก.ค. 2026)
 
 ## Checklist ก่อน deploy production
 
-- [ ] `JWT_SECRET` สุ่มยาว ≥ 32 ตัวอักษร (ไม่ใช่คำเดาได้)
-- [ ] HTTPS ครบทั้ง 2 โดเมน (web + api)
-- [ ] เปลี่ยนรหัสผ่าน seed ทุก user / ปิด seed ใน production
-- [ ] เพิ่ม rate limit ที่ login
+> ขั้นตอน deploy เต็มๆ (Caddy/HTTPS, seed ครั้งแรก, backup cron) อยู่ที่ [DEPLOY.md](./DEPLOY.md)
+
+- [ ] `JWT_SECRET` สุ่มยาว ≥ 32 ตัวอักษร — **มี guard แล้ว**: production api ไม่ start
+      ถ้าสั้นกว่า 32 หรือมีคำว่า `changeme` (`apps/api/src/lib/env.ts`)
+- [ ] HTTPS ครบทั้ง 2 โดเมน (web + api) — compose bind ports เฉพาะ `127.0.0.1` แล้ว
+      คนนอกเข้าได้ทาง reverse proxy เท่านั้น
+- [ ] `WEB_ORIGIN` เป็นโดเมนจริง — **มี guard แล้ว**: production ไม่มี fallback localhost
+- [ ] เปลี่ยนรหัสผ่าน seed ทุก user (`pnpm user:password`) — seed production ต้องมี `SEED_PASSWORD`
+- [x] rate limit ที่ login (13 ก.ค. 2026 — ดูหัวข้อ Trade-off ข้อ 3)
+- [ ] ตั้ง backup อัตโนมัติ + ลอง restore จริง 1 ครั้ง (`scripts/backup-db.sh` + cron — ดู DEPLOY.md)
 - [ ] `docker compose config` เช็คว่าไม่มี secret รั่วใน image (โดยเฉพาะ build args)

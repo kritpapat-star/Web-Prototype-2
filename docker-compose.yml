@@ -2,9 +2,19 @@
 # web (Next.js) → api (Fastify+tRPC+Prisma) → db (PostgreSQL)
 # มีแค่ api ที่เห็น DATABASE_URL — web ไม่มีทางแตะ DB
 
+# log ทุก service ลง stdout (Fastify = pino JSON) → ดูย้อนหลังด้วย `docker compose logs -f api`
+# จำกัดขนาดไว้ไม่งั้นไฟล์ log ของ docker โตไม่จำกัดจนดิสก์เต็ม (10MB × 3 ไฟล์ต่อ container)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped # เครื่อง reboot แล้วขึ้นเองทุกตู้ (ไม่ขึ้นเฉพาะที่สั่ง stop เอง)
+    logging: *default-logging
     environment:
       POSTGRES_USER: beconnected
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -22,22 +32,29 @@ services:
       # ต้อง build จาก root — pnpm workspace ต้องเห็น pnpm-lock.yaml + workspace.yaml
       context: .
       dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql://beconnected:${DB_PASSWORD}@db:5432/erp
       JWT_SECRET: ${JWT_SECRET}
       WEB_ORIGIN: ${WEB_ORIGIN} # เช่น https://erp.beconnected.co.th
       API_PORT: 4000
+      SEED_PASSWORD: ${SEED_PASSWORD:-} # ใช้เฉพาะตอน exec รัน db:seed ครั้งแรก (ดู DEPLOY.md)
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "4000:4000" # หรือซ่อนหลัง reverse proxy (nginx/traefik) แล้วตัด ports ออก
+      # bind เฉพาะ loopback — ให้ reverse proxy (Caddy) บนเครื่องเดียวกันชี้เข้ามา
+      # ⚠️ ถ้าเปิด "4000:4000" เฉยๆ Docker จะทะลุ firewall (ufw) ออก public เลย
+      - "127.0.0.1:4000:4000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
       interval: 10s
       retries: 3
 
   web:
+    restart: unless-stopped
+    logging: *default-logging
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -48,7 +65,7 @@ services:
     depends_on:
       - api
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000" # loopback เช่นกัน — คนนอกเข้าผ่าน reverse proxy + HTTPS เท่านั้น
 
 volumes:
   pgdata:

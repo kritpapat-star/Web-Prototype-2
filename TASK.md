@@ -1,6 +1,6 @@
 # TASK.md — สถานะงาน
 
-> อัปเดตล่าสุด: 11 ก.ค. 2026
+> อัปเดตล่าสุด: 13 ก.ค. 2026
 > กติกา: งานเสร็จให้ย้ายลง Done พร้อมวันที่ / งานใหม่เข้า Backlog ก่อนเสมอ
 
 ## ✅ Done
@@ -93,6 +93,37 @@
 - [x] `SiteType` → implicit m-n — 11 ก.ค. 2026: ลบ model `SiteType`, `Site.types` เป็น `Type[]`
       (Prisma จัดการตารางเชื่อม `_SiteToType` เอง — migration `20260711044237_site_types_implicit_m2m`)
       กติกาเปลี่ยน: ลบ `Type` ที่มีไซต์ใช้อยู่ไม่ถูกบล็อกแล้ว (หลุดจากไซต์เงียบๆ) — schema เหลือ 5 models
+- [x] `WorkPlan.siteId` เป็น FK จริง → `sites.id` — 11 ก.ค. 2026 (commit `bac244f`):
+      migration `20260711074613_link_work_plan_site` backfill placeholder site ให้แผนเก่า
+      + drop `site_id_seq` — ปิดรายการ Backlog เดิม (รายละเอียดดู AGENT.md ข้อ 2)
+- [x] Production hardening ก่อน deploy — 13 ก.ค. 2026:
+      guard `JWT_SECRET` (≥ 32 ตัว, ห้าม changeme — production ไม่ start) รวมที่ `lib/env.ts`,
+      guard `WEB_ORIGIN` production ไม่มี fallback localhost,
+      rate limit ที่ `auth.login` (ผิด 5 ครั้ง/คู่ ip+username ล็อก 15 นาที — in-memory ไม่เพิ่ม dependency),
+      seed ไม่ reset รหัส user เดิม + production บังคับ `SEED_PASSWORD`,
+      สคริปต์ `pnpm user:password` เปลี่ยนรหัสรายคน (`apps/api/scripts/set-password.ts`),
+      compose bind ports เฉพาะ `127.0.0.1` + `NODE_ENV=production` ใน api Dockerfile,
+      สคริปต์ backup `scripts/backup-db.sh` (pg_dump + retention) + คู่มือ **DEPLOY.md** ใหม่,
+      compose: `restart: unless-stopped` + จำกัดขนาด docker logs (10MB×3) ทุก service,
+      ทดสอบ RBAC flow จริงผ่าน curl ครบ 3 ชั้น (no-token/CEO view-only/ownership/query filter
+      /ignore userId จาก client) — ผ่านทุกเคส + ทดสอบ rate limit login จริง (ครั้งที่ 6 โดนล็อก)
+- [x] ปุ่มลบแผนงาน — 13 ก.ค. 2026: mutation `workPlan.delete` (เจ้าของ + ยังไม่กดเริ่ม —
+      กติกาเดียวกับ update, แผนที่เริ่มแล้วลบไม่ได้กันประวัติเพี้ยน) + ปุ่ม "ลบแผนงาน" ใน PlanModal
+      โหมดแก้ไข (confirm สองจังหวะ ชิดซ้ายแยกจากปุ่มบันทึก — `.btn-danger` ใน globals.css)
+      ทดสอบจริงผ่าน curl ครบ: CEO/ข้ามเจ้าของ/แผนเริ่มแล้ว/NOT_FOUND โดนบล็อกหมด, ลบของตัวเองสำเร็จ
+      + ล้างแผนทดลองใน dev DB ทั้งหมดตามคำสั่ง (seed cases ใน seed.ts ยังอยู่ครบ — รัน db:seed ได้เมื่อต้องการ)
+- [x] ปุ่มลบไซต์งาน — 13 ก.ค. 2026: mutation `site.delete` (engineer เท่านั้น — ไซต์ไม่มีเจ้าของ
+      ใครก็ลบได้เหมือน create; มีแผนอ้างอยู่ลบไม่ได้ เช็ค count ก่อนให้ error ภาษาไทยแทน P2003)
+      + ปุ่ม "ลบไซต์งาน" หัวหน้า `/sites/[id]` (confirm สองจังหวะ, disable + hint เมื่อมีแผนอ้างอยู่,
+      สำเร็จแล้วเด้งกลับ /sites) — `.btn-danger` ย้าย margin ไป scope `.modal-actions`
+      ทดสอบจริงผ่าน curl ครบ: CEO/มีแผนอ้าง/NOT_FOUND โดนบล็อก, ลบไซต์ว่างสำเร็จ
+      + ล้างไซต์ทดลองใน dev DB ทั้งหมดตามคำสั่ง (DB สะอาด: 0 แผน 0 ไซต์ — types/users ยังอยู่)
+- [x] ปุ่ม "ยกเลิกเริ่มงาน" — 13 ก.ค. 2026: mutation `workPlan.unstart` (เจ้าของ + เริ่มแล้วแต่ยังไม่จบ)
+      ล้าง `actStart` + `delayStartReason` → แผนกลับเป็น "ยังไม่เริ่ม" แล้วแก้/ลบได้ตามกติกาเดิม
+      — ตัดสินใจ: ถอยสถานะแทนการเปิดลบแผนที่เริ่มแล้ว (กติกา "เริ่มแล้วห้ามแก้/ลบ" ยังจริงเสมอ,
+      audit log ตามรอยการยกเลิกได้) แผนที่จบงานแล้วยกเลิกไม่ได้ · ปุ่มอยู่ใน TodayBanner
+      ข้างปุ่มจบงาน (confirm สองจังหวะ) · ทดสอบจริงผ่าน curl ครบ: CEO/ข้ามเจ้าของ/ยังไม่เริ่ม/
+      จบแล้ว โดนบล็อกหมด, flow เต็ม "เริ่มผิด → ยกเลิก → ลบ" สำเร็จ
 
 ## 🔨 Doing
 
@@ -106,8 +137,6 @@
 
 ## 📦 Backlog
 
-- [ ] relation จาก `WorkPlan.siteId` → table `Site` (ตอนนี้ยังเป็นเลขรันอิสระ (Int) ไม่ใช่ FK)
-- [ ] Rate limit ที่ `auth.login` (ก่อนเปิด internet)
 - [ ] เปลี่ยน token localStorage → httpOnly cookie
 - [ ] หน้าเปลี่ยนรหัสผ่าน + บังคับเปลี่ยนครั้งแรก
 - [ ] Module ถัดไปจาก ERP เต็ม (ยืมอุปกรณ์ / ลงเวลา / ลางาน — ดู `schema_merged.prisma`)

@@ -57,4 +57,25 @@ export const siteRouter = router({
       include: { types: true }, // ให้ web โชว์ผลลัพธ์ได้เลยโดยไม่ต้อง query ซ้ำ
     });
   }),
+
+  // DELETE — Engineer เท่านั้น (ไซต์ไม่มีเจ้าของ — engineer คนไหนก็ลบได้ เหมือน create)
+  // ไซต์ที่มีแผนงานอ้างอยู่ลบไม่ได้ (FK work_plans.siteId เป็น Restrict) — เช็ค count เอง
+  // เพื่อให้ error เป็นภาษาไทย แทน P2003 ดิบจาก Postgres
+  // ประเภทของไซต์ (ตารางเชื่อม _SiteToType) หลุดตามอัตโนมัติ — ตัว Type ไม่ถูกลบ
+  delete: engineerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const site = await ctx.prisma.site.findUnique({
+        where: { id: input.id },
+        include: { _count: { select: { workPlans: true } } },
+      });
+      if (!site) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบไซต์งานนี้" });
+      if (site._count.workPlans > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `ไซต์นี้มีแผนงานอ้างถึงอยู่ ${site._count.workPlans} แผน — ลบไม่ได้ (ต้องลบ/ย้ายแผนออกก่อน)`,
+        });
+      }
+      return ctx.prisma.site.delete({ where: { id: input.id } });
+    }),
 });

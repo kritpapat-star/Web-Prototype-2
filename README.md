@@ -64,5 +64,6 @@ pnpm dev               # api → :4000, web → :3000
 4. [SECURITY.md](./SECURITY.md) — auth, RBAC, กติกาเรื่อง secret
 5. [TESTING.md](./TESTING.md) — แนวทางทดสอบ + edge cases สำคัญ
 6. [TASK.md](./TASK.md) — สถานะงาน done / doing / backlog
+7. [DEPLOY.md](./DEPLOY.md) — ขึ้น production: hosting, HTTPS/Caddy, seed ครั้งแรก, backup
 
 > สำหรับ AI coding agent: อ่าน [AGENT.md](./AGENT.md) ก่อนแก้โค้ดทุกครั้ง

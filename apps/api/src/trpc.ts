@@ -7,9 +7,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import jwt from "jsonwebtoken";
 import superjson from "superjson";
 import { prisma } from "./db";
-
-const JWT_SECRET = process.env.JWT_SECRET!;
-if (!JWT_SECRET) throw new Error("ต้องตั้ง JWT_SECRET ใน .env");
+import { JWT_SECRET } from "./lib/env"; // ตรวจความแข็งแรงของ secret ตอน start ที่นั่นที่เดียว
 
 // payload ที่เราใส่ไว้ใน token ตอน login
 // sub เป็นเลขรัน users.id (Int) — จงใจไม่ตาม RFC ที่ให้ sub เป็น string
@@ -23,7 +21,12 @@ export type JwtPayload = {
 // ---------- CONTEXT ----------
 // สร้างต่อ 1 request: อ่าน "Authorization: Bearer <token>" → verify → ได้ user
 // verify ไม่ผ่าน = user เป็น null (ให้ middleware เป็นคนตัดสินใจว่า route ไหนต้อง login)
-export async function createContext({ req }: { req: { headers: Record<string, string | string[] | undefined> } }) {
+// ip มาจาก Fastify (req.ip) — ใช้เป็น key ของ rate limit ตอน login (ดู routers/auth.ts)
+export async function createContext({
+  req,
+}: {
+  req: { headers: Record<string, string | string[] | undefined>; ip?: string };
+}) {
   let user: JwtPayload | null = null;
 
   const header = req.headers.authorization;
@@ -40,7 +43,7 @@ export async function createContext({ req }: { req: { headers: Record<string, st
     }
   }
 
-  return { prisma, user };
+  return { prisma, user, ip: req.ip ?? "unknown" };
 }
 export type Context = Awaited<ReturnType<typeof createContext>>;
 

@@ -64,7 +64,9 @@ pnpm typecheck                # tsc --noEmit ทั้งสอง app
 
 # ฝั่ง api (cd apps/api)
 pnpm db:migrate               # prisma migrate dev — สร้าง/รัน migration
-pnpm db:seed                  # seed (ล้าง data เดิมด้วย — dev เท่านั้น)
+pnpm db:seed                  # seed idempotent (รันซ้ำไม่ลบ/ไม่ duplicate/ไม่ reset รหัส user เดิม
+                              #   — production ต้องตั้ง SEED_PASSWORD ไม่งั้นไม่รัน ดู DEPLOY.md)
+pnpm user:password <user> <รหัส>  # เปลี่ยนรหัสผ่านรายคน (ทางเดียวที่ reset รหัส user เดิมได้)
 pnpm db:studio                # ดูข้อมูลใน DB
 pnpm dev                      # รัน API :4000
 

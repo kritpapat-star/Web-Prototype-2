@@ -2,7 +2,7 @@
 
 // หน้า "งานของฉัน" — 4 มุมมองของ WorkPlan table เดียว (CONTEXT.md) เรียงจากบนลงล่าง:
 //   1. ปฏิทิน        → ปฏิทินเดือน + แผงแผนงานของวันที่เลือก
-//   2. แผนงาน        → รายการแผนทั้งเดือน + สร้าง/แก้ไขแผน (แก้ได้เฉพาะแผนของตัวเองที่ยังไม่เริ่ม)
+//   2. แผนงาน        → รายการแผนทั้งเดือน + สร้าง/แก้ไข/ลบแผน (ทำได้เฉพาะแผนของตัวเองที่ยังไม่เริ่ม)
 //   3. สิ่งที่ต้องทำ  → งานวันนี้ + งานค้าง พร้อมปุ่มเริ่ม/จบงาน (TodayBanner)
 //   4. สรุปงาน       → นับ status ประจำวัน + รายการจัดกลุ่มตาม status (SummaryPanel)
 // CEO เป็น view-only ตาม RBAC — ไม่มีปุ่ม mutation ใดๆ
@@ -241,6 +241,8 @@ function PlanModal({
   const sites = trpc.site.list.useQuery();
 
   const [name, setName] = useState(plan?.name ?? "");
+  // ลบเป็นสองจังหวะ: กดครั้งแรกเปลี่ยนปุ่มเป็น "ยืนยันลบ" — กันมือลั่นโดยไม่ต้องมี dialog ซ้อน modal
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [typeV, setTypeV] = useState<string>(plan?.type ?? ""); // "" = ยังไม่เลือก / อื่นๆ = types.id
   const [siteIdV, setSiteIdV] = useState<string>(plan ? String(plan.siteId) : ""); // "" = ยังไม่เลือก
   // ช่องวันที่พิมพ์เป็น dd/mm/yyyy เอง (คุมช่องเอง เพราะ <input type=date> เนทีฟ
@@ -276,9 +278,10 @@ function PlanModal({
   };
   const create = trpc.workPlan.create.useMutation(done);
   const update = trpc.workPlan.update.useMutation(done);
+  const del = trpc.workPlan.delete.useMutation(done);
 
-  const pending = create.isPending || update.isPending;
-  const error = create.error ?? update.error;
+  const pending = create.isPending || update.isPending || del.isPending;
+  const error = create.error ?? update.error ?? del.error;
 
   const submit = () => {
     // วันที่ยังไม่ครบรูป/ไม่ใช่วันจริง/จบก่อนเริ่ม → ไม่ส่ง (ขอบแดง + hint บอกอยู่ที่ช่องแล้ว)
@@ -399,6 +402,21 @@ function PlanModal({
         {error && <p className="form-error">{error.message}</p>}
 
         <div className="modal-actions">
+          {/* ลบได้เฉพาะโหมดแก้ไข — เงื่อนไขเปิด modal (ของตัวเอง + ยังไม่เริ่ม) ตรงกับกติกา
+              workPlan.delete ฝั่ง API อยู่แล้ว; ปุ่มอยู่ชิดซ้าย แยกจากปุ่มบันทึกกันกดพลาด */}
+          {plan && (
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={pending}
+              onClick={() => {
+                if (!confirmingDelete) return setConfirmingDelete(true);
+                del.mutate({ id: plan.id });
+              }}
+            >
+              {del.isPending ? "กำลังลบ…" : confirmingDelete ? "ยืนยันลบแผนนี้?" : "ลบแผนงาน"}
+            </button>
+          )}
           <button type="button" className="btn-ghost" onClick={onClose}>
             ยกเลิก
           </button>

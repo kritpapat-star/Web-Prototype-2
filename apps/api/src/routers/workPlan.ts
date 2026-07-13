@@ -248,6 +248,29 @@ export const workPlanRouter = router({
     }),
 
   // ============================================================
+  // DELETE — ลบแผน (กติกาเดียวกับ update: เจ้าของ + ยังไม่กดเริ่ม)
+  //   แผนที่เริ่มงานแล้วห้ามลบ — เป็นประวัติการทำงานจริง กันประวัติเพี้ยน
+  //   audit log ของ mutation นี้ถูกเขียนโดย middleware อัตโนมัติ (targetId = id ที่ลบ)
+  //   ส่วน log เก่าที่อ้าง id นี้ยังอยู่ครบ (append-only — targetId เป็น text ไม่มี FK)
+  // ============================================================
+  delete: engineerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
+      if (plan.userId !== ctx.user.sub) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ลบได้เฉพาะแผนของตัวเอง" });
+      }
+      if (plan.actStart) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "แผนที่เริ่มงานแล้ว ลบไม่ได้ (กันประวัติเพี้ยน)",
+        });
+      }
+      return ctx.prisma.workPlan.delete({ where: { id: input.id } });
+    }),
+
+  // ============================================================
   // START — ปุ่ม "เริ่มงาน" ในสิ่งที่ต้องทำ
   //   เริ่มช้ากว่าแผน → บังคับกรอก delayStartReason
   // ============================================================
@@ -279,6 +302,37 @@ export const workPlanRouter = router({
           actStart: now,
           delayStartReason: isLate ? input.delayStartReason!.trim() : null,
         },
+      });
+    }),
+
+  // ============================================================
+  // UNSTART — ปุ่ม "ยกเลิกเริ่มงาน" (เคสกดเริ่มผิดแผน/ผิดจังหวะ)
+  //   ล้าง actStart + delayStartReason → แผนกลับเป็น "ยังไม่เริ่ม" แล้วแก้/ลบต่อได้ตามกติกาเดิม
+  //   จงใจ "ถอยสถานะ" แทนการเจาะข้อยกเว้นให้ลบแผนที่เริ่มแล้ว — กติกา
+  //   "แผนที่เริ่มแล้วห้ามแก้/ลบ" ยังจริงเสมอ และการยกเลิกถูก audit log อัตโนมัติ (ตามรอยได้)
+  //   แผนที่จบงานแล้วยกเลิกไม่ได้ — เป็นประวัติงานที่ปิดสมบูรณ์แล้ว
+  // ============================================================
+  unstart: engineerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
+      if (plan.userId !== ctx.user.sub) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ยกเลิกได้เฉพาะแผนของตัวเอง" });
+      }
+      if (!plan.actStart) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "แผนนี้ยังไม่ได้เริ่มงาน" });
+      }
+      if (plan.actEnd) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "แผนที่จบงานแล้ว ยกเลิกการเริ่มงานไม่ได้",
+        });
+      }
+
+      return ctx.prisma.workPlan.update({
+        where: { id: input.id },
+        data: { actStart: null, delayStartReason: null },
       });
     }),
 

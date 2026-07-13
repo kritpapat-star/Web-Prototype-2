@@ -43,6 +43,17 @@ export default function SiteDetailPage() {
     { enabled: ready && siteId !== null },
   );
 
+  // ลบไซต์ — สองจังหวะกันมือลั่น (pattern เดียวกับปุ่มลบแผนใน PlanModal)
+  // สำเร็จแล้วกลับหน้ารายชื่อไซต์ (หน้านี้ไม่เหลืออะไรให้ดู) + refresh site.list
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const utils = trpc.useUtils();
+  const del = trpc.site.delete.useMutation({
+    onSuccess: async () => {
+      await utils.site.list.invalidate();
+      router.replace("/sites");
+    },
+  });
+
   // token หมดอายุ/ใช้ไม่ได้ → ล้าง token แล้วเด้งกลับหน้า login (mirror dashboard)
   useEffect(() => {
     if (me.error) {
@@ -54,9 +65,14 @@ export default function SiteDetailPage() {
   if (!ready || me.isLoading) return <div className="center-note">กำลังโหลด…</div>;
   if (!me.data) return null; // ระหว่างเด้งกลับหน้า login
 
+  const isCEO = me.data.role === "CEO";
+
   // ชื่อประเภทของ "แผน" มาจาก type.list (id → name) — ประเภทของ "ไซต์" มากับ site.get อยู่แล้ว
   const typeNameById = new Map((types.data ?? []).map((t) => [t.id, t.name]));
   const planRows = plans.data ?? [];
+  // ไซต์ที่มีแผนอ้างอยู่ลบไม่ได้ (กติกาเดียวกับ site.delete ฝั่ง API — FK Restrict)
+  // bySite โหลดไม่เสร็จก็กดได้ไปก่อน — API เช็คซ้ำเสมออยู่แล้ว
+  const hasPlans = planRows.length > 0;
 
   const notFound = siteId === null || site.error?.data?.code === "NOT_FOUND";
 
@@ -81,7 +97,7 @@ export default function SiteDetailPage() {
         <p className="form-error">โหลดข้อมูลไซต์ไม่สำเร็จ: {site.error.message}</p>
       ) : (
         <>
-          {/* หัวไซต์: เลข + ชื่อ + chip ประเภทของไซต์ (m-n — มีได้หลายประเภท) */}
+          {/* หัวไซต์: เลข + ชื่อ + chip ประเภทของไซต์ (m-n — มีได้หลายประเภท) + ปุ่มลบ (Engineer) */}
           <section className="day-panel">
             <div className="panel-head">
               <h2>{site.data ? `ไซต์ #${site.data.id} — ${site.data.name}` : "กำลังโหลด…"}</h2>
@@ -97,7 +113,26 @@ export default function SiteDetailPage() {
                   })}
                 </div>
               )}
+              {/* ลบไซต์ — Engineer เท่านั้น (site.delete เป็น engineerProcedure, CEO view-only)
+                  มีแผนอ้างอยู่ = กดไม่ได้ (กติกาเดียวกับ API — FK Restrict) */}
+              {!isCEO && site.data && (
+                <button
+                  className="btn-danger"
+                  disabled={del.isPending || hasPlans}
+                  title={hasPlans ? "ไซต์ที่มีแผนงานอ้างถึงอยู่ลบไม่ได้ — ต้องลบ/ย้ายแผนออกก่อน" : undefined}
+                  onClick={() => {
+                    if (!confirmingDelete) return setConfirmingDelete(true);
+                    del.mutate({ id: site.data.id });
+                  }}
+                >
+                  {del.isPending ? "กำลังลบ…" : confirmingDelete ? "ยืนยันลบไซต์นี้?" : "ลบไซต์งาน"}
+                </button>
+              )}
             </div>
+            {hasPlans && !isCEO && (
+              <p className="field-hint">ไซต์นี้มีแผนงานอ้างถึงอยู่ {planRows.length} แผน — ลบไม่ได้</p>
+            )}
+            {del.error && <p className="form-error">{del.error.message}</p>}
           </section>
 
           {/* ประวัติแผนงานทั้งหมดของไซต์ — เรียงใหม่→เก่า (จัดมาจาก API) */}

@@ -7,11 +7,14 @@ import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./routers/_app";
 import { createContext } from "./trpc";
+import { IS_PROD } from "./lib/env";
 
 // ใช้ API_PORT ไม่ใช่ PORT — กันตัวแปรรั่วไปชนกับ Next.js (Next อ่าน PORT เหมือนกัน)
 const port = Number(process.env.API_PORT ?? 4000);
-// origin ของหน้าเว็บ — production ใส่โดเมนจริง เช่น https://erp.beconnected.co.th
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
+// origin ของหน้าเว็บ — production บังคับตั้งเป็นโดเมนจริง เช่น https://erp.beconnected.co.th
+// (fallback localhost มีเฉพาะ dev — ห้ามให้ CORS production ชี้ localhost เงียบๆ)
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? (IS_PROD ? "" : "http://localhost:3000");
+if (!WEB_ORIGIN) throw new Error("production ต้องตั้ง WEB_ORIGIN เป็นโดเมนจริงของหน้าเว็บ (ดู DEPLOY.md)");
 
 async function main() {
   const app = Fastify({ logger: true });
