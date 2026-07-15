@@ -52,11 +52,35 @@ sudo systemctl reload caddy
 
 เปิด firewall เฉพาะ 80/443 (+ssh) พอ — ตู้ db ไม่มี port ออกมา, web/api ออกเฉพาะ loopback อยู่แล้ว
 
-## Cloudflare Tunnel (ทางเลือกเครื่องออฟฟิศ)
+## Cloudflare Tunnel (ทางเลือกเครื่องออฟฟิศ — ใช้อยู่ตอนนี้เป็น server ชั่วคราว)
 
-ไม่ต้อง forward port — รัน `cloudflared` เพิ่มเป็น service ที่ 4 ใน compose แล้วชี้ hostname
-`erp.…` → `http://web:3000` และ `api.…` → `http://api:4000` ผ่าน dashboard ของ Cloudflare
+ไม่ต้อง forward port — `cloudflared` เป็น service ที่ 4 อยู่ใน [docker-compose.tunnel.yml](./docker-compose.tunnel.yml)
 (cloudflared อยู่ใน docker network เดียวกัน เรียกชื่อ service ตรงได้ ไม่เกี่ยวกับ loopback binding)
+
+ขั้นตอนตั้งครั้งแรก:
+
+1. สมัคร/เข้า Cloudflare แล้วเพิ่มโดเมนเข้า account (ต้องเปลี่ยน nameserver ที่ผู้ให้บริการโดเมนมาชี้ Cloudflare)
+2. [Zero Trust](https://one.dash.cloudflare.com) → Networks → Tunnels → **Create a tunnel** (แบบ Cloudflared)
+   → copy token ใส่ `TUNNEL_TOKEN` ใน `.env` (ไม่ต้องรันคำสั่ง install ที่หน้านั้นบอก — compose รันให้)
+3. ในแท็บ **Public Hostnames** ของ tunnel เพิ่ม 2 รายการ:
+   - `erp.<โดเมน>` → Service `HTTP` : `web:3000`
+   - `api.<โดเมน>` → Service `HTTP` : `api:4000`
+4. เติม `WEB_ORIGIN` / `PUBLIC_API_URL` ใน `.env` ให้ตรง hostname ข้อ 3 แล้ว:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+```
+
+ที่เหลือ (seed, เปลี่ยนรหัส, backup) เหมือนหัวข้อ "Deploy ครั้งแรก" ทุกอย่าง
+
+ข้อควรรู้เมื่อ server ชั่วคราวเป็นเครื่อง Windows (dev เครื่องเดียวกัน):
+
+- port loopback ของ stack จริงถูกย้ายเป็น **3001/4001** (ใน tunnel.yml) — 3000/4000 ปล่อยให้ `pnpm dev` ใช้
+- `.env` ที่ root มี `COMPOSE_PROJECT_NAME=erp` — volume ข้อมูลจริงชื่อ `erp_pgdata`
+  แยกจากการทดลอง compose อื่นในโฟลเดอร์นี้ **ห้าม `docker compose down -v` กับ project `erp`**
+- Docker Desktop ต้องขึ้นเองตอน sign-in (มี shortcut ใน `shell:startup` แล้ว — ตั้งไว้ 15 ก.ค. 2026)
+  และหลัง reboot ต้องมีคน **sign-in Windows หนึ่งครั้ง** container ถึงจะขึ้น — ตั้ง sleep เป็น never แล้ว
+- ไฟดับ/เน็ตหลุด = ทั้งทีมใช้ไม่ได้ — เป็นของชั่วคราวจนกว่าจะย้ายขึ้น VPS (แผนใน TASK.md)
 
 ## Deploy ครั้งแรก
 

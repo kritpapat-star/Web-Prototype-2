@@ -144,10 +144,13 @@
 
 ## ⏭️ Next (เรียงตามลำดับแนะนำ)
 
-1. [ ] Deploy ขึ้น server จริง (ของในเครื่องพร้อมหมดแล้ว — ต้องการ SSH host/user + โดเมน
-       แล้วไล่ตาม DEPLOY.md: .env จริง → compose up → seed → เปลี่ยนรหัส → Caddy → backup cron)
-2. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)
-3. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
+1. [ ] Deploy บนเครื่องนี้เป็น server ชั่วคราว + Cloudflare Tunnel (ตัดสินใจ 15 ก.ค. 2026 —
+       compose tunnel + .env + auto-start เตรียมแล้ว เหลือ: โดเมนเข้า Cloudflare → TUNNEL_TOKEN
+       → เติม .env → up → seed → เปลี่ยนรหัส → backup — ไล่ตาม DEPLOY.md หัวข้อ Cloudflare Tunnel)
+2. [ ] ย้ายขึ้น VPS จริงเมื่อพร้อม (เครื่องออฟฟิศไฟดับ/เน็ตหลุด = ล่มทั้งทีม — ของชั่วคราวเท่านั้น
+       ย้ายด้วย pg_dump → restore ตามท้าย DEPLOY.md)
+3. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)
+4. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
 
 ## 📦 Backlog
 

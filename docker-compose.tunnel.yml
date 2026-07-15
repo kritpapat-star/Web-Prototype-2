@@ -1,0 +1,31 @@
+# docker-compose.tunnel.yml — ใช้คู่กับไฟล์หลักเมื่อรันแบบ "เครื่องออฟฟิศ + Cloudflare Tunnel"
+# (ดูขั้นตอนเต็มใน DEPLOY.md หัวข้อ Cloudflare Tunnel):
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+#
+# ทำ 2 อย่าง:
+# 1. เพิ่ม cloudflared เป็น service ที่ 4 — ต่อ "ออก" ไปหา Cloudflare เอง (ไม่ต้อง forward port)
+#    การชี้ hostname → service ตั้งใน Cloudflare dashboard: erp.… → http://web:3000, api.… → http://api:4000
+# 2. ย้าย port loopback ของ web/api ไป 3001/4001 — เครื่อง server ชั่วคราวเป็นเครื่อง dev ด้วย
+#    (pnpm dev ใช้ 3000/4000 อยู่) ตัว tunnel เรียกผ่านชื่อ service ใน docker network ไม่เกี่ยวกับ port host
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - web
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    ports: !override
+      - "127.0.0.1:4001:4000"
+
+  web:
+    ports: !override
+      - "127.0.0.1:3001:3000"
