@@ -21,7 +21,11 @@ export type JwtPayload = {
 // ---------- CONTEXT ----------
 // สร้างต่อ 1 request: อ่าน "Authorization: Bearer <token>" → verify → ได้ user
 // verify ไม่ผ่าน = user เป็น null (ให้ middleware เป็นคนตัดสินใจว่า route ไหนต้อง login)
-// ip มาจาก Fastify (req.ip) — ใช้เป็น key ของ rate limit ตอน login (ดู routers/auth.ts)
+// ip ใช้เป็น key ของ rate limit ตอน login (ดู routers/auth.ts) + เก็บลง audit log:
+// production อยู่หลัง Cloudflare Tunnel → req.ip เป็น IP ภายใน docker ของ cloudflared เสมอ
+// ต้องอ่าน CF-Connecting-IP (IP จริงของ browser ที่ Cloudflare แนบมา) ก่อน — เชื่อ header นี้ได้
+// เพราะ api ไม่มี port สาธารณะ (loopback + docker network เท่านั้น) ทางเข้าเดียวคือผ่าน Cloudflare
+// dev ไม่มี header นี้ → ตกกลับ req.ip ตามเดิม
 export async function createContext({
   req,
 }: {
@@ -47,7 +51,9 @@ export async function createContext({
   // — เช่น site.update ฝากชื่อเดิมก่อนแก้) auditMutation รวมค่านี้เข้า detail ตอนเขียน log
   // สร้างใหม่ต่อ 1 request จึงไม่รั่วข้าม request
   const audit: Record<string, unknown> = {};
-  return { prisma, user, ip: req.ip ?? "unknown", audit };
+  const cfIp = req.headers["cf-connecting-ip"];
+  const ip = (typeof cfIp === "string" && cfIp) || req.ip || "unknown";
+  return { prisma, user, ip, audit };
 }
 export type Context = Awaited<ReturnType<typeof createContext>>;
 
