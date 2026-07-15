@@ -33,6 +33,9 @@
    แผนเก่าที่ `type` เป็น null ยังอยู่ได้ — update ไม่บังคับเติม แต่ถ้าจะเปลี่ยน type/ไซต์ต้องผ่านเช็คคู่ site↔type
    ตั้งแต่ 7 ก.ค. 2026 มี `AuditLog` (append-only — ห้ามมี update/delete) เขียนจาก middleware ใน `trpc.ts`
    เท่านั้น (+ login ใน `auth.ts`) ทุก mutation ที่สำเร็จถูก log อัตโนมัติ — **ห้ามเก็บ password ลง detail**
+   ตั้งแต่ 14 ก.ค. 2026 `auth.ts` เขียน `LOGIN_FAILED` ด้วย (เฉพาะ username ที่มีจริงแต่รหัสผิด —
+   `audit_logs.userId` ไม่รับ null, detail มีแค่ `{ ip }`) และมี `auditLog.users`/`auditLog.summary`
+   (ceoProcedure) เลี้ยงแถบสรุปหน้า log ของ CEO — หน้า log โหมดปกติซ่อน `ui.click` ผ่าน `excludeActions`
    ตั้งแต่ 7 ก.ค. 2026 (เพิ่มเติม) เก็บ **full click telemetry** ด้วย: ฝั่ง web ดักทุกคลิก
    (`ClickLogger` ใน `providers.tsx`) แล้วส่งเป็นก้อนผ่าน mutation `auditLog.track` ตัวเดียว
    (`action = "ui.click"`, `detail = {page,label,tag,at}` — เก็บแค่ตัวตนของ element ห้ามมีค่าใน input)
@@ -84,7 +87,8 @@ docker compose up -d --build
 - **`NEXT_PUBLIC_*` เป็น build-time:** ต้องส่งเป็น build arg ใน compose + `ARG`/`ENV` ใน Dockerfile ก่อน `next build`
   ใส่ใน `environment:` ไม่มีผล (bug นี้เคยหลุดใน docker-compose.yml มาแล้ว)
 - **แผนคร่อมเดือน:** ห้าม query ด้วย `startDate` อย่างเดียว — งานติดตั้งจริงคร่อมเดือนบ่อย
-  seed มีแผน 29 มิ.ย.–1 ก.ค. ไว้จับ bug นี้โดยเฉพาะ
+  (เดิม seed มีแผน 29 มิ.ย.–1 ก.ค. ไว้จับ bug นี้ — ถูกลบออกแล้ว 14 ก.ค. 2026 พร้อม sites/workPlans ตัวอย่าง
+  ถ้าเพิ่มเทสต์ใหม่ให้ครอบเคสคร่อมเดือนด้วย)
 
 ## ไฟล์สำคัญ
 
@@ -93,9 +97,9 @@ docker compose up -d --build
 | `apps/api/src/trpc.ts` | context (verify JWT) + middleware ทั้งหมด (RBAC + audit log) |
 | `apps/api/src/routers/workPlan.ts` | logic หลักของ module |
 | `apps/api/src/routers/auth.ts` | login / me |
-| `apps/api/src/routers/auditLog.ts` | ประวัติการใช้งาน: `list` (engineer เห็นของตัวเอง / CEO เห็นทุกคน) + `track` (web ส่ง click log เข้า) |
+| `apps/api/src/routers/auditLog.ts` | ประวัติการใช้งาน: `list` (engineer เห็นของตัวเอง / CEO เห็นทุกคน) + `users`/`summary` (แถบสรุปของ CEO) + `track` (web ส่ง click log เข้า) |
 | `apps/web/src/lib/trpc.ts` | tRPC client + จัดการ token |
 | `apps/api/prisma/schema.prisma` | source of truth ของ data model |
-| `apps/api/prisma/seed.ts` | test data ครอบคลุมทุก status |
+| `apps/api/prisma/seed.ts` | ข้อมูลโครงสร้างล้วน: types + users (ไม่มี workPlans/sites ตัวอย่างแล้ว ตั้งแต่ 14 ก.ค. 2026) |
 | `apps/api/src/lib/dates.ts` | `dateOnlyICT()` — normalize วันที่ ICT (สูตรเดียวกับฝั่ง web) |
 | `apps/web/src/lib/status.ts` | computed status + `STATUS_META` (สี/ป้ายทุกหน้าจอ แก้ที่เดียว) |

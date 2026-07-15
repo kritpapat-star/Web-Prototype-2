@@ -73,7 +73,7 @@ export function SummaryPanel({ today, isCEO }: { today: Date; isCEO: boolean }) 
                       <div className="plan-name">{plan.name}</div>
                       <div className="plan-sub">
                         {isCEO && <>{plan.user.name} · </>}
-                        ไซต์ #{plan.siteId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
+                        {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
                       </div>
                       {(plan.delayStartReason || plan.delayEndReason) && (
                         <div className="plan-delay">

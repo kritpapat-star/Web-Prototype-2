@@ -154,7 +154,7 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
                   </div>
                   <div className="plan-sub">
                     {isCEO && <>{plan.user.name} · </>}
-                    ไซต์ #{plan.siteId} · {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
+                    {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
                   </div>
                   {(plan.delayStartReason || plan.delayEndReason) && (
                     <div className="plan-delay">

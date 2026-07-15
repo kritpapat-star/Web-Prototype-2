@@ -114,7 +114,7 @@ export default function SitesPage() {
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="ค้นชื่อไซต์หรือเลขไซต์ เช่น #5"
+            placeholder="ค้นชื่อไซต์"
             aria-label="ค้นหาไซต์งาน"
           />
           {q && (
@@ -157,7 +157,6 @@ export default function SitesPage() {
               <Link key={site.id} href={`/sites/${site.id}`} className="plan-row row-link">
                 <div className="plan-main">
                   <div className="plan-name">{site.name}</div>
-                  <div className="plan-sub">ไซต์ #{site.id}</div>
                 </div>
                 <div className="plan-chips">
                   {site.types.map((t) => {
@@ -210,7 +209,7 @@ function SiteModal({ onClose }: { onClose: () => void }) {
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h3>เพิ่มไซต์งานสำเร็จ</h3>
           <p className="modal-note">
-            ไซต์ #{created.id} — {created.name}
+            {created.name}
             {created.types.length > 0 && (
               <> · ประเภท: {created.types.map((t) => t.name).join(", ")}</>
             )}

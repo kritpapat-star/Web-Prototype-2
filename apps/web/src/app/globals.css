@@ -590,6 +590,34 @@ input {
   color: #1c1f2e;
 }
 
+/* ชื่อไซต์ + ดินสอแก้ชื่อ อยู่กลุ่มเดียวกัน (หัว site detail) — ดินสอชิดหลังชื่อ ไม่โดน space-between ดันไปขวา */
+.site-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* ปุ่มไอคอนดินสอ — โทนเดียวกับ .search-clear (จาง, hover ม่วงแบรนด์) */
+.title-edit {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #b9bcc9;
+  cursor: pointer;
+}
+
+.title-edit:hover {
+  background: #f1f1f6;
+  color: #6d5ce8;
+}
+
 .btn-primary {
   background: #6d5ce8;
   color: #fff;
@@ -962,6 +990,22 @@ a.nav-item:not(.active):hover {
   border-color: #6d5ce8;
 }
 
+/* dropdown ประเภทการกระทำ — หน้าตาเดียวกับช่องวันที่ แต่กว้างตามป้ายไทย */
+.log-select {
+  min-width: 160px;
+  padding: 7px 10px;
+  border: 1px solid #e0e0ea;
+  border-radius: 8px;
+  font-size: 13.5px;
+  background: #fff;
+  color: #33354a;
+}
+
+.log-select:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
 /* พิมพ์ค้างไว้แต่ยังไม่เป็นวันที่ที่ถูกต้อง — ขอบแดงเตือน (ยังไม่กรองจนกว่าจะครบรูป) */
 .log-date-input.invalid {
   border-color: #e5484d;
@@ -1009,4 +1053,85 @@ a.nav-item:not(.active):hover {
   color: #8a8da0;
   font-size: 12px;
   word-break: break-word;
+}
+
+/* ---------- แถบสรุปวันนี้ของ CEO (เหนือ filter) — กดตัวเลขเพื่อกรองตารางเป็นประเภทนั้น+วันนี้ ---------- */
+.log-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+}
+
+.log-summary-tile {
+  min-width: 104px;
+  padding: 10px 14px;
+  border: 1px solid #ebebf2;
+  border-radius: 10px;
+  background: #fbfbfd;
+  text-align: left;
+  cursor: pointer;
+}
+
+.log-summary-tile:hover {
+  border-color: #6d5ce8;
+  background: #f6f4ff;
+}
+
+.log-summary-num {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #33354a;
+}
+
+.log-summary-lbl {
+  font-size: 12px;
+  color: #55586a;
+  white-space: nowrap;
+}
+
+/* ค่าที่ต้องสะดุดตาเมื่อ > 0 (ลบแผน / login ไม่สำเร็จ) */
+.log-summary-tile.danger .log-summary-num {
+  color: #e5484d;
+}
+
+/* รายชื่อคนที่ยังไม่เข้าระบบวันนี้ — ใต้แถบสรุป */
+.log-summary-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: #8a8da0;
+}
+
+.log-summary-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #55586a;
+}
+
+/* แถวเหตุการณ์อันตราย (ลบแผน/ไซต์, login ไม่สำเร็จ) — พื้นชมพูอ่อนให้กวาดตาเจอทันที */
+.log-row-danger td {
+  background: #fdf3f4;
+}
+
+.log-row-danger .log-detail-main {
+  color: #c0353a;
+}
+
+/* ลิงก์ drill-down จากแถว log → หน้าไซต์ที่เกี่ยว */
+.log-detail-link {
+  width: fit-content;
+  font-size: 12px;
+  color: #6d5ce8;
+  text-decoration: none;
+}
+
+.log-detail-link:hover {
+  text-decoration: underline;
 }

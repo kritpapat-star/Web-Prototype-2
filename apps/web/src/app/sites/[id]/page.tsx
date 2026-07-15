@@ -46,6 +46,7 @@ export default function SiteDetailPage() {
   // ลบไซต์ — สองจังหวะกันมือลั่น (pattern เดียวกับปุ่มลบแผนใน PlanModal)
   // สำเร็จแล้วกลับหน้ารายชื่อไซต์ (หน้านี้ไม่เหลืออะไรให้ดู) + refresh site.list
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editing, setEditing] = useState(false); // เปิด modal แก้ชื่อไซต์
   const utils = trpc.useUtils();
   const del = trpc.site.delete.useMutation({
     onSuccess: async () => {
@@ -97,10 +98,39 @@ export default function SiteDetailPage() {
         <p className="form-error">โหลดข้อมูลไซต์ไม่สำเร็จ: {site.error.message}</p>
       ) : (
         <>
-          {/* หัวไซต์: เลข + ชื่อ + chip ประเภทของไซต์ (m-n — มีได้หลายประเภท) + ปุ่มลบ (Engineer) */}
+          {/* หัวไซต์: ชื่อ + chip ประเภทของไซต์ (m-n — มีได้หลายประเภท) + ปุ่มลบ (Engineer) */}
           <section className="day-panel">
             <div className="panel-head">
-              <h2>{site.data ? `ไซต์ #${site.data.id} — ${site.data.name}` : "กำลังโหลด…"}</h2>
+              <div className="site-title">
+                <h2>{site.data ? site.data.name : "กำลังโหลด…"}</h2>
+                {/* ดินสอแก้ชื่อ วางข้างหลังชื่อ — Engineer เท่านั้น (site.update เป็น engineerProcedure, CEO view-only)
+                    กดได้เสมอ ไม่เกี่ยวกับว่ามีแผนอ้างอยู่หรือไม่ (ต่างจากปุ่มลบ)
+                    aria-label ให้ ClickLogger เก็บชื่อปุ่มไอคอนล้วนได้ (labelOf อ่าน aria-label) */}
+                {!isCEO && site.data && (
+                  <button
+                    type="button"
+                    className="title-edit"
+                    aria-label="แก้ไขชื่อไซต์"
+                    title="แก้ไขชื่อไซต์"
+                    onClick={() => setEditing(true)}
+                  >
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9" />
+                      <path d="m16.5 3.5 4 4L7 21l-4 1 1-4z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               {site.data && site.data.types.length > 0 && (
                 <div className="plan-chips">
                   {site.data.types.map((t) => {
@@ -186,6 +216,81 @@ export default function SiteDetailPage() {
           </section>
         </>
       )}
+
+      {editing && site.data && (
+        <EditSiteModal
+          site={{ id: site.data.id, name: site.data.name }}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </AppShell>
+  );
+}
+
+// ---------- modal แก้ชื่อไซต์ (Engineer เท่านั้น) ----------
+// name-only — ประเภทของไซต์ (m-n) ยังไม่มี UI แก้ ต้องแก้ผ่าน create ใหม่/ภายหลัง
+// สำเร็จแล้ว invalidate site.get (หัวหน้านี้) + site.list (หน้ารายชื่อ) ให้ชื่อใหม่ขึ้นทันที แล้วปิด modal
+function EditSiteModal({
+  site,
+  onClose,
+}: {
+  site: { id: number; name: string };
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [name, setName] = useState(site.name);
+
+  const update = trpc.site.update.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.site.get.invalidate({ id: site.id }),
+        utils.site.list.invalidate(),
+      ]);
+      onClose();
+    },
+  });
+
+  const trimmed = name.trim();
+  const unchanged = trimmed === site.name; // ไม่มีอะไรเปลี่ยน — กันยิง mutation เปล่า
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <form
+        className="modal"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          update.mutate({ id: site.id, name: trimmed });
+        }}
+      >
+        <h3>แก้ไขชื่อไซต์งาน</h3>
+
+        <label className="field">
+          ชื่อไซต์งาน
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            maxLength={200}
+            autoFocus
+          />
+        </label>
+
+        {update.error && <p className="form-error">{update.error.message}</p>}
+
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={update.isPending || trimmed.length === 0 || unchanged}
+          >
+            {update.isPending ? "กำลังบันทึก…" : "บันทึก"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }

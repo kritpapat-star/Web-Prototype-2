@@ -43,7 +43,11 @@ export async function createContext({
     }
   }
 
-  return { prisma, user, ip: req.ip ?? "unknown" };
+  // ช่องให้ handler ฝาก detail เพิ่มเข้า audit log ได้ (server-observed truth ที่ raw input ไม่มี
+  // — เช่น site.update ฝากชื่อเดิมก่อนแก้) auditMutation รวมค่านี้เข้า detail ตอนเขียน log
+  // สร้างใหม่ต่อ 1 request จึงไม่รั่วข้าม request
+  const audit: Record<string, unknown> = {};
+  return { prisma, user, ip: req.ip ?? "unknown", audit };
 }
 export type Context = Awaited<ReturnType<typeof createContext>>;
 
@@ -66,7 +70,9 @@ const auditMutation = t.middleware(async ({ ctx, type, path, getRawInput, next }
     try {
       // raw input ผ่าน zod ของ procedure มาแล้ว (result.ok) — แปลงผ่าน JSON ให้ Date เป็น ISO string
       const rawInput = await getRawInput();
-      const detail = rawInput === undefined ? undefined : JSON.parse(JSON.stringify(rawInput));
+      let detail = rawInput === undefined ? undefined : JSON.parse(JSON.stringify(rawInput));
+      // handler อาจฝาก detail เพิ่มไว้ที่ ctx.audit (ดู createContext) — รวมเข้า detail ที่จะเก็บ
+      if (Object.keys(ctx.audit).length > 0) detail = { ...(detail ?? {}), ...ctx.audit };
       // id เป็นได้ทั้ง string (เช่น types.id) และ number (เลขรัน เช่น WorkPlan) — targetId เก็บเป็น text เสมอ
       const data = result.data as { id?: unknown } | undefined;
       const idOf = (v: unknown) =>
@@ -108,8 +114,8 @@ export const engineerProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
-// เฉพาะ CEO — primitive สำรองไว้สำหรับหน้าเฉพาะผู้บริหาร (ตอนนี้ยังไม่มี router ไหนใช้:
-// auditLog.list เปิดให้ทุก role แล้วโดย scope เป็นรายคนที่ query แทน)
+// เฉพาะ CEO — ใช้กับ query ฝั่งผู้บริหาร: auditLog.users + auditLog.summary (แถบสรุปหน้า log)
+// (auditLog.list ยังเปิดให้ทุก role โดย scope เป็นรายคนที่ query แทน)
 export const ceoProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "CEO") {
     throw new TRPCError({

@@ -3,7 +3,8 @@
 // detail มาจาก raw input ของ mutation (workPlan.*) หรือ { page, label, tag, at } (ui.click)
 //   - workPlan.create/update: startDate/endDate เป็น UTC-midnight ISO string → format ด้วย fmtDayMonth (UTC)
 //   - workPlan.update ส่งมาเฉพาะ field ที่เปลี่ยน → บอกได้ว่าแก้อะไรบ้าง
-// action/detail ที่ไม่รู้จักหรือพังรูป → main เป็น "" (หน้า log โชว์ "—" แทน)
+// main ต้องไม่ว่างเสมอ — ตาราง log ไม่มีคอลัมน์ "การกระทำ" แล้ว ช่องนี้เป็นที่เดียวที่บอกว่าเกิดอะไรขึ้น
+// (action ที่ไม่รู้จัก = โชว์ path ดิบ ดีกว่าปล่อยแถวว่าง)
 
 import { fmtDayMonth } from "./format";
 
@@ -32,6 +33,12 @@ const TYPE_NAMES: Record<string, string> = {
 };
 
 export type LogDescription = { main: string; sub?: string };
+
+// ชื่อไซต์ placeholder จาก backfill (migration 20260711074613) = "ไซต์ #<เลข>" ตรงๆ
+// เป็นแค่ที่กันชื่อว่างของไซต์ที่ระบบสร้างอัตโนมัติ ไม่มีความหมายกับผู้ใช้ — หน้า log ไม่โชว์
+export function isPlaceholderSiteName(name: string): boolean {
+  return /^ไซต์ #\d+$/.test(name.trim());
+}
 
 function pageName(p: unknown): string {
   if (typeof p !== "string") return "";
@@ -68,7 +75,7 @@ export function describeLog(log: LogLike): LogDescription {
       ]
         .filter(Boolean)
         .join(" · ");
-      return { main: name ? `“${name}”` : "สร้างแผนงาน", sub: sub || undefined };
+      return { main: name ? `สร้างแผน “${name}”` : "สร้างแผนงาน", sub: sub || undefined };
     }
 
     // แก้ไขแผน — บอกเฉพาะ field ที่เปลี่ยน (detail ส่งมาเท่าที่แก้)
@@ -87,15 +94,46 @@ export function describeLog(log: LogLike): LogDescription {
     // เริ่ม/จบงาน — ไม่มีเหตุผล = ตรงเวลา / มีเหตุผล = ล่าช้าพร้อมเหตุผล (API บังคับกรอกเฉพาะตอนช้า)
     case "workPlan.start": {
       const reason = typeof d.delayStartReason === "string" ? d.delayStartReason.trim() : "";
-      return reason ? { main: "ล่าช้า", sub: reason } : { main: "ตรงเวลา" };
+      return reason ? { main: "เริ่มงานล่าช้า", sub: reason } : { main: "เริ่มงานตรงเวลา" };
     }
     case "workPlan.finish": {
       const reason = typeof d.delayEndReason === "string" ? d.delayEndReason.trim() : "";
-      return reason ? { main: "ล่าช้า", sub: reason } : { main: "ตรงเวลา" };
+      return reason ? { main: "จบงานล่าช้า", sub: reason } : { main: "จบงานตรงเวลา" };
     }
 
-    // auth.login (ไม่เก็บ detail) และ action อื่นที่ยังไม่รู้จัก → ปล่อยว่าง
+    case "workPlan.delete":
+      return { main: "ลบแผนงาน" };
+    case "workPlan.unstart":
+      return { main: "ยกเลิกเริ่มงาน" };
+
+    // ไซต์งาน — detail คือ raw input (create มี name / delete มีแค่ id)
+    case "site.create": {
+      const name = typeof d.name === "string" ? d.name : "";
+      return { main: name ? `สร้างไซต์ “${name}”` : "สร้างไซต์งาน" };
+    }
+    // แก้ชื่อไซต์ — detail มี name (ชื่อใหม่) + prevName (ชื่อเดิม ที่ handler ฝากไว้ ดู api/trpc.ts)
+    // มีทั้งคู่และต่างกัน = โชว์ "เดิม → ใหม่" / log เก่าก่อนเก็บ prevName = โชว์เฉพาะชื่อใหม่
+    case "site.update": {
+      const name = typeof d.name === "string" ? d.name : "";
+      const prev = typeof d.prevName === "string" ? d.prevName : "";
+      if (prev && name && prev !== name) return { main: "เปลี่ยนชื่อไซต์", sub: `${prev} → ${name}` };
+      return { main: name ? `เปลี่ยนชื่อไซต์เป็น “${name}”` : "แก้ไขชื่อไซต์" };
+    }
+    case "site.delete":
+      return { main: "ลบไซต์งาน" };
+
+    // login จงใจไม่เก็บ detail (มี password ใน input) — บอกแค่ว่าเข้าสู่ระบบ
+    case "auth.login":
+      return { main: "เข้าสู่ระบบ" };
+
+    // login ไม่สำเร็จ — เขียนจาก auth.ts เฉพาะกรณี username มีจริงแต่รหัสผิด, detail มีแค่ ip ต้นทาง
+    case "LOGIN_FAILED": {
+      const ip = typeof d.ip === "string" ? d.ip : "";
+      return { main: "เข้าสู่ระบบไม่สำเร็จ (รหัสผ่านผิด)", sub: ip ? `จาก IP ${ip}` : undefined };
+    }
+
+    // action ที่ยังไม่รู้จัก → โชว์ path ดิบ (ห้ามปล่อยว่าง — ไม่มีคอลัมน์อื่นบอกแล้ว)
     default:
-      return { main: "" };
+      return { main: log.action };
   }
 }

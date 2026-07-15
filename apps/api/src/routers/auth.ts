@@ -67,6 +67,18 @@ export const authRouter = router({
       const ok = user && (await bcrypt.compare(input.password, user.passwordHash));
       if (!ok) {
         recordLoginFail(rateKey);
+        // log ความพยายาม login ที่ผิด — สัญญาณ security ที่ CEO ควรเห็นในหน้า log
+        // เก็บได้เฉพาะกรณี username มีจริง (audit_logs.userId ไม่รับ null) — username มั่วไม่ถูก log
+        // ⚠️ ห้ามเก็บ input เด็ดขาด (มี password) — detail มีแค่ ip ต้นทาง
+        if (user) {
+          try {
+            await ctx.prisma.auditLog.create({
+              data: { userId: user.id, action: "LOGIN_FAILED", detail: { ip: ctx.ip } },
+            });
+          } catch (err) {
+            console.error("เขียน audit log (login failed) ไม่สำเร็จ:", err);
+          }
+        }
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "username หรือรหัสผ่านไม่ถูกต้อง",

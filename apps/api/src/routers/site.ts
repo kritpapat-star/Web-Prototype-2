@@ -58,6 +58,31 @@ export const siteRouter = router({
     });
   }),
 
+  // UPDATE — แก้ชื่อไซต์ (Engineer เท่านั้น) — จากปุ่ม "แก้ไขชื่อ" หน้า site detail
+  // แก้เฉพาะชื่อ (ประเภท m-n ยังไม่มี UI แก้) — เช็คว่ามีไซต์จริงก่อน เพื่อให้ error เป็นภาษาไทย แทน P2025 ดิบ
+  update: engineerProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        name: z.string().trim().min(1, "ต้องระบุชื่อไซต์งาน").max(200),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // อ่านชื่อเดิมก่อนเขียนทับ — ต้องอ่านที่นี่ เพราะ audit log เขียนหลัง update สำเร็จ (ชื่อถูกทับไปแล้ว)
+      const prev = await ctx.prisma.site.findUnique({
+        where: { id: input.id },
+        select: { name: true },
+      });
+      if (!prev) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบไซต์งานนี้" });
+      // ฝากชื่อเดิมให้ audit log (raw input มีแต่ชื่อใหม่) — หน้า log โชว์ "ชื่อเดิม → ชื่อใหม่"
+      ctx.audit.prevName = prev.name;
+      return ctx.prisma.site.update({
+        where: { id: input.id },
+        data: { name: input.name },
+        include: { types: true }, // mirror create — ให้ web refresh ได้เลยโดยไม่ query ซ้ำ
+      });
+    }),
+
   // DELETE — Engineer เท่านั้น (ไซต์ไม่มีเจ้าของ — engineer คนไหนก็ลบได้ เหมือน create)
   // ไซต์ที่มีแผนงานอ้างอยู่ลบไม่ได้ (FK work_plans.siteId เป็น Restrict) — เช็ค count เอง
   // เพื่อให้ error เป็นภาษาไทย แทน P2003 ดิบจาก Postgres

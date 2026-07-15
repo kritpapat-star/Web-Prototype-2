@@ -82,7 +82,7 @@ model WorkPlan {
 }
 
 // Audit log — append-only (ห้ามมี update/delete). ผู้เขียนมี: middleware ใน trpc.ts
-// (ทุก mutation สำเร็จ) + login ใน auth.ts + mutation auditLog.track (full click telemetry จาก web)
+// (ทุก mutation สำเร็จ) + login/LOGIN_FAILED ใน auth.ts + mutation auditLog.track (full click telemetry จาก web)
 // action="ui.click" เก็บแค่ตัวตนของ element — ห้ามมี password/ค่าใน input (ดู AGENT.md ข้อ lock)
 model AuditLog {
   id        String   @id @default(cuid())
