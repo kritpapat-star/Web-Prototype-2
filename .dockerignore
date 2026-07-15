@@ -1,0 +1,15 @@
+# กัน COPY apps/* ลาก node_modules ของเครื่อง host (junction ของ pnpm บน Windows)
+# เข้าไปทับของที่ pnpm install ใน container — เคยทำ prisma generate พังตอน build จริง 15 ก.ค. 2026
+node_modules
+**/node_modules
+
+# build output ของเครื่อง host — ใน container ต้อง build ใหม่เสมอ
+**/.next
+**/dist
+
+# secret ห้ามหลุดเข้า image (NEXT_PUBLIC_* ส่งเป็น build arg อยู่แล้ว)
+.env
+**/.env
+**/.env.local
+
+.git

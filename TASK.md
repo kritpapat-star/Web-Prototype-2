@@ -1,6 +1,6 @@
 # TASK.md — สถานะงาน
 
-> อัปเดตล่าสุด: 13 ก.ค. 2026
+> อัปเดตล่าสุด: 15 ก.ค. 2026
 > กติกา: งานเสร็จให้ย้ายลง Done พร้อมวันที่ / งานใหม่เข้า Backlog ก่อนเสมอ
 
 ## ✅ Done
@@ -124,6 +124,19 @@
       audit log ตามรอยการยกเลิกได้) แผนที่จบงานแล้วยกเลิกไม่ได้ · ปุ่มอยู่ใน TodayBanner
       ข้างปุ่มจบงาน (confirm สองจังหวะ) · ทดสอบจริงผ่าน curl ครบ: CEO/ข้ามเจ้าของ/ยังไม่เริ่ม/
       จบแล้ว โดนบล็อกหมด, flow เต็ม "เริ่มผิด → ยกเลิก → ลบ" สำเร็จ
+- [x] หน้า log ยกเครื่อง + LOGIN_FAILED + แก้ชื่อไซต์ — 14 ก.ค. 2026: ตัวกรองประเภทการกระทำ
+      (`lib/log-actions.ts` รหัสมาตรฐาน map ลง action จริง + filter `actions`/`excludeActions`
+      ใน `auditLog.list` — โหมดปกติซ่อน ui.click) + แถบสรุปของ CEO (`auditLog.users`/`summary`
+      เป็น ceoProcedure) + enrich target (ชื่อแผน/ไซต์ + ลิงก์) + log `LOGIN_FAILED` ใน auth.ts
+      (เฉพาะ username ที่มีจริง — detail มีแค่ ip ห้ามเก็บ password) + `site.update` แก้ชื่อไซต์
+      (ฝากชื่อเดิมให้ audit ผ่าน `ctx.audit`) + seed เหลือข้อมูลโครงสร้าง types+users ตามคำสั่งเจ้าของ
+- [x] Build docker image จริงครั้งแรก + smoke test — 15 ก.ค. 2026: เจอบั๊กไม่มี `.dockerignore`
+      (COPY apps/* ลาก node_modules ของ host เข้าทับของ container → `prisma generate` พัง)
+      เพิ่ม `.dockerignore` (node_modules/.next/.env*/.git) → build ผ่านทั้ง 2 image
+      + smoke test เต็ม stack ในเครื่อง (map 3100/4100 เลี่ยง dev): migrate deploy ครบ 15 ตัว,
+      seed บังคับ `SEED_PASSWORD` (guard production ทำงานจริง), login ได้ token, RBAC ผ่าน
+      (no-token UNAUTHORIZED / CEO ยิง mutation FORBIDDEN), web render 200 — ปิด Next ข้อ 3 เดิม
+      เก็บกวาดแล้ว (`down -v`) — เหลือเฉพาะขั้นบน server จริง (รอ SSH + โดเมนจากเจ้าของ)
 
 ## 🔨 Doing
 
@@ -131,9 +144,10 @@
 
 ## ⏭️ Next (เรียงตามลำดับแนะนำ)
 
-1. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)
-2. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
-3. [ ] build ทดสอบ docker image ทั้งคู่จริง (`docker compose build`) — Dockerfile เขียนแล้วแต่ยังไม่เคย build
+1. [ ] Deploy ขึ้น server จริง (ของในเครื่องพร้อมหมดแล้ว — ต้องการ SSH host/user + โดเมน
+       แล้วไล่ตาม DEPLOY.md: .env จริง → compose up → seed → เปลี่ยนรหัส → Caddy → backup cron)
+2. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)
+3. [ ] ปรับ UI เป็น responsive/mobile-first (Engineer ใช้มือถือหน้างานเป็นหลัก — ดู CONTEXT.md)
 
 ## 📦 Backlog
 
