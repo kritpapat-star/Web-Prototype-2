@@ -17,14 +17,22 @@ enum Role {
   ENGINEER
 }
 
+// สถานะใบแจ้งซ่อม — เก็บใน DB ตรงๆ (ยกเลิก derived status เดิม — เจ้าของสั่ง 20 ก.ค. 2026)
+enum TicketStatus {
+  OPEN // เปิดอยู่ รอช่างรับ
+  ACCEPTED // รับเป็นแผนงานแล้ว (WorkPlan ถูกสร้างตอนกดรับ — ไม่มี FK ผูกแล้ว)
+  CLOSED // ปิดโดยไม่แปลงเป็นแผน
+}
+
 // ประเภทงาน — lookup table (แทน enum PlanType เดิม)
-// จำกัดไว้ ~5 ประเภท เรียงตาม id (string) — ถ้ามีเกิน 9 ประเภทเมื่อไหร่ การเรียงจะเพี้ยน ("10" < "2")
-// ต้องกลับมาเพิ่ม sortOrder หรือ cast id เป็นเลขตอน query
+// จำกัดไว้ ~5 ประเภท เรียงตาม id — id เป็น Int ตั้งแต่ 20 ก.ค. 2026 (เดิม string มีปัญหา "10" < "2")
+// ไม่ autoincrement: เลขลำดับคงที่กำหนดจาก seed/migration เท่านั้น (ไม่มี type.create)
 model Type {
-  id        String     @id // เลขลำดับคงที่ เช่น "1" — เป็นค่าที่เก็บใน work_plans.type
+  id        Int        @id // เลขลำดับคงที่ เช่น 1 — เป็นค่าที่เก็บใน work_plans.type
   name      String     @unique // ชื่อที่แสดงใน dropdown/chip เช่น "Solar Cell"
   workPlans WorkPlan[]
   sites     Site[] // implicit m-n — ดูหมายเหตุที่ Site.types
+  tickets   Ticket[]
 
   @@map("types")
 }
@@ -39,6 +47,7 @@ model Site {
   name      String
   types     Type[]
   workPlans WorkPlan[]
+  tickets   Ticket[]
 
   @@map("sites")
 }
@@ -52,6 +61,10 @@ model User {
   color        String // สีประจำตัวบนปฏิทินรวมของ CEO เช่น "#0ea5e9"
   workPlans    WorkPlan[]
   auditLogs    AuditLog[]
+  ticketsAssigned Ticket[] @relation("TicketAssignee")
+  ticketsCreated  Ticket[] @relation("TicketCreator")
+  notifications      Notification[] @relation("NotificationRecipient")
+  notificationsActed Notification[] @relation("NotificationActor")
 
   @@map("users")
 }
@@ -61,7 +74,7 @@ model WorkPlan {
   siteId           Int // FK → sites.id — เลือกจาก dropdown ตอนสร้างแผน (sequence site_id_seq เดิมถูก drop แล้ว)
   userId           Int
   name             String
-  type             String? // ประเภทงาน — FK → types.id, optional, เลือกจาก dropdown ตอนสร้าง/แก้
+  type             Int? // ประเภทงาน — FK → types.id, optional, เลือกจาก dropdown ตอนสร้าง/แก้
   startDate        DateTime  @db.Date // แผนเริ่ม
   endDate          DateTime  @db.Date // แผนจบ
   actStart         DateTime? // เริ่มจริง
@@ -71,14 +84,70 @@ model WorkPlan {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  user    User  @relation(fields: [userId], references: [id])
-  typeRef Type? @relation(fields: [type], references: [id]) // relation ของ scalar `type`
-  site    Site  @relation(fields: [siteId], references: [id]) // Restrict: ลบไซต์ที่มีแผนใช้อยู่ไม่ได้
+  user    User    @relation(fields: [userId], references: [id])
+  typeRef Type?   @relation(fields: [type], references: [id]) // relation ของ scalar `type`
+  site    Site    @relation(fields: [siteId], references: [id]) // Restrict: ลบไซต์ที่มีแผนใช้อยู่ไม่ได้
 
   @@index([userId, startDate])
   @@index([startDate, endDate]) // สำหรับ query ปฏิทินรวมของ CEO
   @@index([siteId]) // สำหรับ query แผนรายไซต์ (หน้า site detail ในอนาคต)
   @@map("work_plans")
+}
+
+// ใบแจ้งซ่อม (ticket) — คนรับสาย (ทุก role รวม CEO — ข้อยกเว้นที่อนุมัติ 18 ก.ค. 2026) เปิดใบ
+// แล้วมอบหมายช่าง ENGINEER — ช่างกด "รับเป็นแผนงาน" สร้าง WorkPlan + set status=ACCEPTED
+// slim schema 20 ก.ค. 2026: เหลือ 8 column (ตัด appointmentAt/workPlanId/closedAt/closeReason/updatedAt)
+// status เป็น column จริง enum TicketStatus (OPEN/ACCEPTED/CLOSED)
+// siteId กลับมาเป็น optional 21 ก.ค. 2026 (เจ้าของสั่ง): เลือกไซต์ตอนเปิดแจ้งซ่อมได้ถ้ารู้ (ลูกค้าเดิม)
+//   ไม่รู้ไซต์ปล่อยว่าง → ช่างเลือก/สร้างไซต้ตอนกด "รับเป็นแผนงาน" (AcceptModal) เหมือนเดิม
+//   type↔site match ยังเช็คที่ accept (workPlan.create) เท่านั้น — ticket create เช็คแค่ site มีจริง (lenient)
+// ใบที่ ACCEPTED/CLOSED = ล็อกทั้งใบ แก้ไขไม่ได้ (กติกาเดิม)
+model Ticket {
+  id          Int          @id @default(autoincrement()) // เลขรัน 1, 2, 3, …
+  title       String // หัวข้อ/อาการเสีย (max 200 — เช็คที่ zod)
+  detail      String? // = Description ในสเปคเจ้าของ
+  status      TicketStatus @default(OPEN)
+  type        Int? // FK → types.id — optional (ยังไม่รู้ว่าระบบไหนเสียก็เปิดใบได้)
+  siteId      Int? // FK → sites.id — optional (รู้ไซต์ก็เลือก ไม่รู้ปล่อยว่าง) — เพิ่ม 21 ก.ค. 2026
+  assignedId  Int // = AssignedId — FK → users.id ช่างผู้รับงาน ต้องเป็น ENGINEER (เช็คที่ tRPC)
+  createdById Int // = RequesterId — FK → users.id คนเปิดใบ
+  createdAt   DateTime     @default(now())
+
+  typeRef   Type? @relation(fields: [type], references: [id]) // SetNull (default) เหมือน work_plans.type
+  site      Site? @relation(fields: [siteId], references: [id], onDelete: SetNull) // ลบไซต์ → ใบเหลือ siteId=null (ไม่ลบใบ)
+  assigned  User  @relation("TicketAssignee", fields: [assignedId], references: [id])
+  createdBy User  @relation("TicketCreator", fields: [createdById], references: [id])
+  notifications Notification[]
+
+  @@index([assignedId, createdAt]) // banner ใบเปิดของช่างผู้รับ
+  @@index([createdAt]) // ตารางรวมเรียงใหม่→เก่า
+  @@index([siteId]) // กรอง/ดูใบแจ้งซ่อมรายไซต์
+  @@map("tickets")
+}
+
+// การแจ้งเตือนในแอป — ผูกกับ Ticket เสมอ (scope ปัจจุบัน: เหตุการณ์ของใบแจ้งซ่อมเท่านั้น)
+// type เป็น string อิสระ เช่น "ticket_assigned", "comment_added", "sla_breach" — ฝั่ง web ใช้ filter/เลือก icon
+// จงใจไม่ทำเป็น enum: เพิ่มประเภทใหม่ได้โดยไม่ต้อง migrate (comment/SLA ยังไม่มีในระบบ เผื่ออนาคต)
+// isRead แยกจาก readAt ตามสเปค — mark read ต้อง set ทั้งคู่ (isRead=true + readAt=now)
+model Notification {
+  id        Int       @id @default(autoincrement()) // เลขรัน 1, 2, 3, …
+  userId    Int // FK → users.id — ผู้รับการแจ้งเตือน
+  ticketId  Int // FK → tickets.id — เกิดจากใบแจ้งซ่อมไหน (Cascade: ticket ไม่มี delete อยู่แล้ว แต่กันไว้)
+  type      String // ประเภทเหตุการณ์ เช่น "ticket_assigned" — ใช้ filter/กำหนด icon ฝั่ง web
+  message   String // ข้อความที่แสดงใน list
+  isRead    Boolean   @default(false)
+  readAt    DateTime? // อ่านเมื่อไหร่ — set พร้อม isRead ตอน mark read
+  actorId   Int? // FK → users.id — คน trigger เหตุการณ์ (คนละคนกับ userId ผู้รับ) — null ได้เช่นเหตุการณ์จากระบบ (sla_breach)
+  link      String? // URL ภายในแอปที่กดแล้วพาไป เช่น "/tickets/12"
+  createdAt DateTime  @default(now())
+
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt]) // list การแจ้งเตือนของ user + badge นับยังไม่อ่าน
+  @@index([ticketId]) // ลบ/ไล่ดูการแจ้งเตือนราย ticket
+  @@map("notifications")
 }
 
 // Audit log — append-only (ห้ามมี update/delete). ผู้เขียนมี: middleware ใน trpc.ts

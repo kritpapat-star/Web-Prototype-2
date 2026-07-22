@@ -6,16 +6,40 @@
 ## การตัดสินใจที่ lock แล้ว (ห้ามเปลี่ยนโดยไม่ถาม)
 
 1. **Architecture แบบ B** — web / api / db แยก 3 containers, web ไม่มี Prisma และห้าม import อะไรจาก `apps/api` ยกเว้น **type** (`import type { AppRouter }`)
-2. **Schema 5 models** — `User` + `WorkPlan` + `AuditLog` + `Type` + `Site` ใน scope ปัจจุบัน (`WorkPlan.siteId` เป็น FK → `sites.id` แล้ว)
+2. **Schema 7 models** — `User` + `WorkPlan` + `AuditLog` + `Type` + `Site` + `Ticket` + `Notification` ใน scope ปัจจุบัน (`WorkPlan.siteId` เป็น FK → `sites.id` แล้ว)
+   ตั้งแต่ 20 ก.ค. 2026 มี **Notification** (table `notifications` — migration `20260720120000_add_notifications`):
+   การแจ้งเตือนในแอป ผูกกับ `Ticket` เสมอ, `userId` = ผู้รับ, `actorId` = คน trigger (nullable — เหตุการณ์จากระบบ),
+   `type` เป็น string อิสระ (เช่น `ticket_assigned`) **จงใจไม่เป็น enum** — เพิ่มประเภทได้โดยไม่ migrate,
+   `isRead` แยกจาก `readAt` — mark read ต้อง set ทั้งคู่ (ยังไม่มี router/UI — schema อย่างเดียวก่อน)
+   ตั้งแต่ 18 ก.ค. 2026 มีระบบ **เคสลูกค้า (Ticket)**: intake จากลูกค้าโทรเข้า → มอบหมาย ENGINEER
+   → ผู้รับกด "รับเป็นแผนงาน" (mutation `ticket.accept`) สร้าง `WorkPlan` ใน transaction เดียว
+   **slim schema 20 ก.ค. 2026 (เจ้าของสั่ง — migration `20260720150000_slim_tickets`):** `tickets` เหลือ 8 column
+   `id, title, detail, status, type, assignedId, createdById, createdAt` — ตัด `siteId` / `appointmentAt` /
+   (`assigneeId` ถูก rename เป็น `assignedId` ให้ตรงสเปคเจ้าของ — migration `20260720160000_rename_assignee_to_assigned`
+   ฝั่ง web ยังอ่าน log เก่า key `assigneeId` ได้ใน `log-detail.ts`)
+   `workPlanId` / `closedAt` / `closeReason` / `updatedAt` ทิ้งถาวร (ข้อมูลเดิมบน server หาย — เจ้าของยืนยันแล้ว)
+   → สถานะเคสเป็น **column จริง** `status` enum `TicketStatus` (`OPEN`/`ACCEPTED`/`CLOSED`)
+   — **ข้อยกเว้นของ lock #3 ที่เจ้าของอนุมัติ 20 ก.ค. 2026** (migration backfill จาก workPlanId/closedAt เดิม)
+   → เคสไม่ผูกไซต์/ไม่มีนัดหมายแล้ว — ช่างเลือก type+site ให้แผนตอนกด accept ตามกติกา `workPlan.create`
+   → ไม่มี FK ผูกแผน↔เคสแล้ว: ลบแผนภายหลัง เคส**ไม่**เด้งกลับมาเปิด (status ค้างเป็น ACCEPTED)
+   → `ticket.close` ไม่บังคับเหตุผลแล้ว (column `closeReason` ถูกตัด)
+   เคสที่ ACCEPTED/CLOSED = ล็อกทั้งเคส (แก้ไม่ได้) ไม่มี `ticket.delete` (ปิดแทนลบ เก็บประวัติ)
+   **รูปแนบเคสถูกถอดออกทั้งชุด 20 ก.ค. 2026** (เจ้าของสั่ง — เลิกเก็บรูป/metadata ใน DB, จะย้ายไปเก็บที่อื่น ยังไม่กำหนด):
+   ตาราง `ticket_images` ถูก drop (migration `20260720000000_drop_ticket_images`), endpoint `/uploads/*` +
+   `ticket.removeImage` + dependency `@fastify/multipart`/`@fastify/static` ถูกลบแล้ว
+   ⚠️ volume `erp_uploads` บนเครื่อง server ยังมีไฟล์รูปเก่า — เก็บไว้เป็น backup อย่าลบจนกว่าที่เก็บใหม่จะพร้อม
    ตั้งแต่ 9 ก.ค. 2026 มี `Site` (table `sites`) เก็บ id/name — ประเภทของไซต์เป็น m-n กับ `Type`
    (ไซต์มีได้หลายประเภท ไม่จำกัดจำนวน) ต่างจาก `WorkPlan` ที่ยังเป็น 1 type ต่อแผน
    ตั้งแต่ 11 ก.ค. 2026 m-n นี้เป็น **implicit** (`Site.types Type[]` — Prisma จัดการตารางเชื่อม `_SiteToType` เอง)
    แทน model `SiteType`/table `site_types` เดิม (migration `20260711044237_site_types_implicit_m2m`)
    ⚠️ ลบ `Type` ที่มีไซต์ใช้อยู่ไม่ถูกบล็อกแล้ว (cascade หลุดจากไซต์เงียบๆ) — แต่ยังลบ type ที่มีแผนงานใช้ไม่ได้ (FK `work_plans.type` ยัง Restrict)
-   ตั้งแต่ 9 ก.ค. 2026 ประเภทงานเป็น lookup table `types` (id เป็นเลขลำดับคงที่เช่น `"1"`, name แสดงผลเช่น "Solar Cell")
+   ตั้งแต่ 9 ก.ค. 2026 ประเภทงานเป็น lookup table `types` (id เป็นเลขลำดับคงที่เช่น `1`, name แสดงผลเช่น "Solar Cell")
+   **ตั้งแต่ 20 ก.ค. 2026 `types.id` เป็น Int** (เจ้าของสั่ง "id เป็นเลขรันหมด" — migration `20260720170000_int_type_ids`
+   แปลง text→int ทั้ง `types.id`/`work_plans.type`/`tickets.type`/`_SiteToType.B` คงข้อมูลเดิม, `audit_logs.id` คง cuid ตามเดิม
+   log เก่าใน `audit_logs.detail` ยังเก็บ type เป็น string — ฝั่ง web (`log-detail.ts`) อ่านได้ทั้งเลขและ string)
    แทน enum `PlanType` เดิม — `work_plans.type` เป็น FK ไป `types.id`, ฝั่ง web ดึงตัวเลือก/label
    ผ่าน query `type.list` (ห้าม hardcode รายชื่อประเภท) ส่วนสี chip อยู่ที่ `apps/web/src/lib/plan-types.ts`
-   จำกัดไว้ ~5 ประเภท เรียงตาม id — ไม่มี sortOrder ถ้าจะมีเกิน 9 ประเภทต้องเพิ่มกลับ (id เป็น string, "10" < "2")
+   จำกัดไว้ ~5 ประเภท เรียงตาม id — ไม่มี sortOrder (id เป็น Int แล้ว เกิน 9 ประเภทก็เรียงถูก — ข้อจำกัด "10" < "2" เดิมหมดไป)
    ตั้งแต่ 6 ก.ค. 2026 เลขรันอัตโนมัติจาก Postgres sequence — client ไม่ส่ง/แก้ไม่ได้
    (9 ก.ค. 2026 เปลี่ยนชื่อ `jobId` → `siteId`, sequence `job_id_seq` → `site_id_seq`, prefix `JOB-` → `SITE-`)
    ตั้งแต่ 10 ก.ค. 2026 id เป็น**เลขรันล้วน**: `WorkPlan.id`/`Site.id` เป็น Int autoincrement,
@@ -40,13 +64,18 @@
    (`ClickLogger` ใน `providers.tsx`) แล้วส่งเป็นก้อนผ่าน mutation `auditLog.track` ตัวเดียว
    (`action = "ui.click"`, `detail = {page,label,tag,at}` — เก็บแค่ตัวตนของ element ห้ามมีค่าใน input)
    → นี่คือ **ข้อยกเว้นเดียว** ที่ client เขียน log ได้ (นอกนั้นยังห้าม) และ middleware ข้าม path นี้กัน log ซ้อน
-3. **Status ไม่เก็บใน DB** — คำนวณจาก `actStart`/`actEnd`/`startDate`/`endDate` เสมอ (ดู `planStatus()`)
-   ห้ามเพิ่ม column `status` เด็ดขาด
+3. **Status ของแผนงานไม่เก็บใน DB** — คำนวณจาก `actStart`/`actEnd`/`startDate`/`endDate` เสมอ (ดู `planStatus()`)
+   ห้ามเพิ่ม column `status` ให้ `work_plans` เด็ดขาด
+   (ข้อยกเว้นเดียว: `tickets.status` — เจ้าของอนุมัติ 20 ก.ค. 2026 ตอน slim schema ดู lock #2)
 4. **วันที่ = ICT (UTC+7)** — input วันที่ทุกจุดต้องผ่าน `dateOnlyICT()` ก่อนเซฟลง column `@db.Date`
    ห้ามส่ง Date จาก client ลง Prisma ตรงๆ
 5. **Delay reason บังคับที่ API** — `actStart > startDate` ต้องมี `delayStartReason`, `actEnd > endDate` ต้องมี `delayEndReason` — validation อยู่ที่ tRPC mutation เท่านั้น (ที่เดียว)
 6. **RBAC ที่ middleware** — `protectedProcedure` (ต้อง login) → `engineerProcedure` (เฉพาะ ENGINEER)
    CEO เป็น **view-only**: ห้ามมี mutation ไหนที่ CEO เรียกได้
+   **ข้อยกเว้นเดียว (อนุมัติโดยเจ้าของ 18 ก.ค. 2026): module เคสลูกค้า** — CEO เปิด/แก้/ปิดเคสได้
+   (`ticket.create/update/close` เป็น protectedProcedure)
+   แต่ "รับเป็นแผนงาน" (`ticket.accept`) ยังเป็น engineerProcedure เฉพาะผู้ถูกมอบหมาย —
+   CEO ยังแตะ WorkPlan/Site ไม่ได้เหมือนเดิม ผู้รับเคส (assignee) ต้องเป็น ENGINEER เท่านั้น
 7. **Auth = JWT ออกเอง** — ไม่ใช้ NextAuth (ตัดออกไปแล้วตอนย้ายเป็นแบบ B) payload คือ `{ sub, role, name }` — user id อยู่ใน `sub` (เป็นเลขรัน Int ตั้งแต่ 11 ก.ค. 2026 — จงใจไม่ตาม RFC ที่ให้ sub เป็น string เพราะใช้ภายในระบบเดียว)
 
 ## Conventions
@@ -55,6 +84,9 @@
 - Error ที่ user เห็น (`TRPCError.message`) เป็นภาษาไทย
 - Query เดือนในปฏิทินใช้ interval overlap เสมอ: `startDate ≤ monthEnd AND endDate ≥ monthStart`
 - อย่า write field ที่ user ไม่ได้แก้ (ดู pattern conditional spread ใน `workPlan.update`)
+- กติกาแก้/ลบแผน (ตั้งแต่ 18 ก.ค. 2026): แผนแก้ไขได้จนกว่าจะ**จบงาน** — แผนที่เริ่มแล้วแก้ได้ทุก field
+  ยกเว้น "วันเริ่ม" (ผูกกับ `actStart`/`delayStartReason` ที่บันทึกแล้ว — จะแก้วันเริ่มต้องกดยกเลิกเริ่มงานก่อน)
+  ส่วน**ลบ**ยังทำได้เฉพาะแผนที่ยังไม่เริ่มเท่านั้น / แผนที่จบงานแล้วล็อกทั้งแผน
 - zod schema อยู่ติดกับ router ที่ใช้ ไม่แยกไฟล์จนกว่าจะซ้ำข้าม router
 
 ## คำสั่งที่ใช้บ่อย
@@ -94,8 +126,11 @@ docker compose up -d --build
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `apps/api/src/trpc.ts` | context (verify JWT) + middleware ทั้งหมด (RBAC + audit log) |
+| `apps/api/src/trpc.ts` | context + middleware ทั้งหมด (RBAC + audit log) — ตัว verify JWT อยู่ `lib/auth-token.ts` |
 | `apps/api/src/routers/workPlan.ts` | logic หลักของ module |
+| `apps/api/src/routers/ticket.ts` | เคสลูกค้า: create/list/get/todo/update/close/accept (กติกาดู lock 2, 6) |
+| `apps/api/src/routers/user.ts` | `user.list` — roster ENGINEER สำหรับ dropdown ผู้รับเคส |
+| `apps/api/src/lib/asserts.ts` | `assertTypeExists` + `assertSiteMatchesType` — ใช้ร่วม workPlan/ticket |
 | `apps/api/src/routers/auth.ts` | login / me |
 | `apps/api/src/routers/auditLog.ts` | ประวัติการใช้งาน: `list` (engineer เห็นของตัวเอง / CEO เห็นทุกคน) + `users`/`summary` (แถบสรุปของ CEO) + `track` (web ส่ง click log เข้า) |
 | `apps/web/src/lib/trpc.ts` | tRPC client + จัดการ token |

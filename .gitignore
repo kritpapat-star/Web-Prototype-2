@@ -8,5 +8,8 @@ dist/
 .env
 .env.local
 
+# รูปแนบเคสตอน dev (ฟีเจอร์ถูกถอด 20 ก.ค. 2026 — กันไฟล์เก่าที่ค้างในเครื่อง dev หลุดเข้า git)
+apps/api/uploads/
+
 # AI tool workspace
 .kilo/

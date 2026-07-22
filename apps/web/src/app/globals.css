@@ -178,6 +178,154 @@ input {
   background: #f4f4fa;
 }
 
+/* ---------- กระดิ่งการแจ้งเตือน: badge + dropdown ---------- */
+
+.bell-wrap {
+  position: relative; /* anchor ของ badge + dropdown */
+}
+
+.bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid #fff;
+  box-sizing: content-box;
+}
+
+/* overlay โปร่งใสสำหรับ click-away — ใต้ dropdown แต่เหนือเนื้อหา (modal ยังอยู่สูงกว่าที่ z-50) */
+.bell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.bell-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border: 1px solid #e5e5ee;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(20, 18, 60, 0.16);
+  z-index: 41;
+  overflow: hidden;
+}
+
+.bell-dropdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f5;
+  font-weight: 700;
+  color: #1c1f2e;
+}
+
+.bell-mark-all {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bell-mark-all:hover {
+  text-decoration: underline;
+}
+
+.bell-mark-all:disabled {
+  color: #9ca3af;
+  cursor: default;
+}
+
+.bell-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.bell-empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.bell-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f4f4fa;
+  padding: 12px 16px;
+  cursor: pointer;
+  position: relative;
+}
+
+.bell-item:last-child {
+  border-bottom: none;
+}
+
+.bell-item:hover {
+  background: #f8f8fc;
+}
+
+.bell-item.unread {
+  background: #eff6ff;
+}
+
+.bell-item.unread::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 18px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+}
+
+.bell-item-main {
+  font-size: 14px;
+  color: #1c1f2e;
+  line-height: 1.45;
+}
+
+.bell-item.unread .bell-item-main {
+  font-weight: 600;
+}
+
+.bell-item-meta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8b8d99;
+}
+
+.bell-item-meta .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
 .page {
   padding: 22px 28px 40px;
   display: flex;
@@ -1134,4 +1282,67 @@ a.nav-item:not(.active):hover {
 
 .log-detail-link:hover {
   text-decoration: underline;
+}
+
+/* ---------- เคสลูกค้า (tickets) ---------- */
+
+/* แถวเคสเป็น <button> (กดเปิด detail modal) — ล้างหน้าตาปุ่มให้กลืนกับ .plan-row ปกติ */
+.ticket-row {
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f1f1f6;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* modal รายละเอียดเคส — กว้างกว่าฟอร์มปกติให้ข้อมูลเรียงสบายตา */
+.modal-wide {
+  width: 560px;
+}
+
+.ticket-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  font-size: 13.5px;
+}
+.ticket-facts dt {
+  color: #6b7280;
+  font-size: 12px;
+}
+.ticket-facts dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticket-detail-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  color: #374151;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+/* แถวสร้างไซต์ใหม่ inline ใน AcceptModal */
+.new-site-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+.new-site-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* banner เคสบน dashboard — สืบสไตล์หลักจาก .today-banner */
+.ticket-banner .banner-date a {
+  color: inherit;
 }

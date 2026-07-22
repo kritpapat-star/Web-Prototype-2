@@ -16,6 +16,7 @@ import { TH_GREGORIAN, fmtDayMonth, fmtFullDate, parseDMY } from "../../lib/form
 import { AppShell } from "../../components/app-shell";
 import { MonthCalendar } from "../../components/month-calendar";
 import { TodayBanner } from "../../components/today-banner";
+import { TicketBanner } from "../../components/ticket-banner";
 import { SummaryPanel } from "../../components/summary-panel";
 
 // ข้อมูลแผนเท่าที่ form แก้ไขใช้ (หยิบจากแถวใน list)
@@ -23,9 +24,10 @@ type EditablePlan = {
   id: number;
   siteId: number;
   name: string;
-  type?: string | null; // types.id (เลขลำดับ เช่น "1")
+  type?: number | null; // types.id (เลขลำดับ เช่น 1 — Int ตั้งแต่ 20 ก.ค. 2026)
   startDate: Date;
   endDate: Date;
+  actStart: Date | null; // เริ่มแล้ว → modal ล็อกวันเริ่ม + ซ่อนปุ่มลบ (กติกาเดียวกับ API)
 };
 
 export default function DashboardPage() {
@@ -54,12 +56,14 @@ export default function DashboardPage() {
   const types = trpc.type.list.useQuery(undefined, { enabled: ready });
 
   // token หมดอายุ/ใช้ไม่ได้ → ล้าง token แล้วเด้งกลับหน้า login
+  // เช็ค !isFetching กันตัดสินจาก error เก่าที่ค้างใน cache ระหว่าง refetch —
+  // ไม่งั้น login ใหม่แล้วโดน error ค้างล้าง token ทิ้งทันที (ต้อง refresh ถึงจะเข้าได้)
   useEffect(() => {
-    if (me.error) {
+    if (me.error && !me.isFetching) {
       setToken(null);
       router.replace("/");
     }
-  }, [me.error, router]);
+  }, [me.error, me.isFetching, router]);
 
   if (!ready || me.isLoading) return <div className="center-note">กำลังโหลด…</div>;
   if (!me.data) return null; // ระหว่างเด้งกลับหน้า login
@@ -101,8 +105,9 @@ export default function DashboardPage() {
     const typeMeta = plan.type
       ? { ...typeColor(plan.type), label: typeNameById.get(plan.type) ?? plan.type }
       : null;
-    // แก้ได้เฉพาะแผนของตัวเองที่ยังไม่กดเริ่ม (กติกาเดียวกับ workPlan.update ฝั่ง API)
-    const editable = withEdit && !isCEO && plan.userId === myId && !plan.actStart;
+    // แก้ได้เฉพาะแผนของตัวเองที่ยังไม่จบงาน — แผนที่เริ่มแล้วแก้ได้ยกเว้นวันเริ่ม
+    // (กติกาเดียวกับ workPlan.update ฝั่ง API — modal เป็นคนล็อกช่องวันเริ่มเอง)
+    const editable = withEdit && !isCEO && plan.userId === myId && !plan.actEnd;
     return (
       <div key={plan.id} className="plan-row">
         <span className="dot" style={{ background: plan.user.color }} />
@@ -147,6 +152,9 @@ export default function DashboardPage() {
         router.replace("/");
       }}
     >
+      {/* ---------- 0) เคสที่ได้รับมอบหมาย — แจ้งเตือนตอน login รายวัน (ไม่มีเคส = ไม่โชว์) ---------- */}
+      <TicketBanner isCEO={isCEO} />
+
       {/* ---------- 1) ปฏิทิน ---------- */}
       <div className="month-nav">
         <button onClick={() => shiftMonth(-1)} aria-label="เดือนก่อนหน้า">
@@ -209,7 +217,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ---------- 3) สิ่งที่ต้องทำ ---------- */}
-      <TodayBanner today={today} isCEO={isCEO} />
+      <TodayBanner today={today} isCEO={isCEO} onEdit={setEditing} />
 
       {/* ---------- 4) สรุปงาน ---------- */}
       <SummaryPanel today={today} isCEO={isCEO} />
@@ -236,6 +244,9 @@ function PlanModal({
 }) {
   const utils = trpc.useUtils();
 
+  // แผนที่เริ่มงานแล้ว: แก้ได้ทุกอย่างยกเว้นวันเริ่ม และลบไม่ได้ (กติกาเดียวกับ API)
+  const started = !!plan?.actStart;
+
   // ตัวเลือกประเภทงาน + ไซต์งาน (react-query dedupe กับ query เดียวกันของหน้าอื่น)
   const types = trpc.type.list.useQuery();
   const sites = trpc.site.list.useQuery();
@@ -243,7 +254,7 @@ function PlanModal({
   const [name, setName] = useState(plan?.name ?? "");
   // ลบเป็นสองจังหวะ: กดครั้งแรกเปลี่ยนปุ่มเป็น "ยืนยันลบ" — กันมือลั่นโดยไม่ต้องมี dialog ซ้อน modal
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [typeV, setTypeV] = useState<string>(plan?.type ?? ""); // "" = ยังไม่เลือก / อื่นๆ = types.id
+  const [typeV, setTypeV] = useState<string>(plan?.type != null ? String(plan.type) : ""); // "" = ยังไม่เลือก / อื่นๆ = types.id (DOM เก็บ string — แปลงเป็นเลขตอนส่ง)
   const [siteIdV, setSiteIdV] = useState<string>(plan ? String(plan.siteId) : ""); // "" = ยังไม่เลือก
   // ช่องวันที่พิมพ์เป็น dd/mm/yyyy เอง (คุมช่องเอง เพราะ <input type=date> เนทีฟ
   // แสดงผลตาม locale เครื่อง บังคับ dd/mm/yyyy ไม่ได้ — pattern เดียวกับหน้า log)
@@ -259,14 +270,14 @@ function PlanModal({
   // ตัวเลือกไซต์: กรองตามประเภทที่เลือก (Site.types) — ยังไม่เลือกประเภท = ล็อก dropdown
   // โหมดแก้ไขแผนเก่าที่ type ว่าง: โชว์ไซต์ปัจจุบันตัวเดียวไว้ให้เห็น (เปลี่ยนไซต์ได้ต่อเมื่อเลือกประเภทก่อน)
   const siteOptions = (sites.data ?? []).filter((s) =>
-    typeV ? s.types.some((t) => t.id === typeV) : plan && s.id === plan.siteId,
+    typeV ? s.types.some((t) => t.id === Number(typeV)) : plan && s.id === plan.siteId,
   );
 
   // เปลี่ยนประเภท → ไซต์ที่เลือกอยู่ไม่รองรับประเภทใหม่ = ล้างให้เลือกใหม่จากรายการที่กรองแล้ว
   const changeType = (v: string) => {
     setTypeV(v);
     const cur = (sites.data ?? []).find((s) => String(s.id) === siteIdV);
-    if (!cur || !cur.types.some((t) => t.id === v)) setSiteIdV("");
+    if (!cur || !cur.types.some((t) => t.id === Number(v))) setSiteIdV("");
   };
 
   // สำเร็จ → refresh ทุก query ของ workPlan (ปฏิทิน/รายการ/สิ่งที่ต้องทำ/สรุป ขยับตามกัน)
@@ -290,7 +301,7 @@ function PlanModal({
     if (!plan) {
       create.mutate({
         name: name.trim(),
-        type: typeV, // บังคับเลือกที่ form แล้ว (select required)
+        type: Number(typeV), // บังคับเลือกที่ form แล้ว (select required)
         siteId: Number(siteIdV),
         startDate: new Date(`${startISO}T00:00:00Z`),
         endDate: new Date(`${endISO}T00:00:00Z`),
@@ -300,7 +311,7 @@ function PlanModal({
     update.mutate({
       id: plan.id,
       ...(name.trim() !== plan.name ? { name: name.trim() } : {}),
-      ...(typeV !== (plan.type ?? "") ? { type: typeV || undefined } : {}),
+      ...(typeV !== String(plan.type ?? "") ? { type: typeV ? Number(typeV) : undefined } : {}),
       ...(siteIdV !== String(plan.siteId) ? { siteId: Number(siteIdV) } : {}),
       ...(start !== fmtFullDate(plan.startDate) ? { startDate: new Date(`${startISO}T00:00:00Z`) } : {}),
       ...(end !== fmtFullDate(plan.endDate) ? { endDate: new Date(`${endISO}T00:00:00Z`) } : {}),
@@ -381,7 +392,11 @@ function PlanModal({
               value={start}
               onChange={(e) => setStart(e.target.value)}
               required
+              disabled={started}
             />
+            {started && (
+              <span className="field-hint">เริ่มงานแล้ว — แก้วันเริ่มได้เมื่อกดยกเลิกเริ่มงานก่อน</span>
+            )}
           </label>
           <label className="field">
             วันจบ
@@ -402,9 +417,9 @@ function PlanModal({
         {error && <p className="form-error">{error.message}</p>}
 
         <div className="modal-actions">
-          {/* ลบได้เฉพาะโหมดแก้ไข — เงื่อนไขเปิด modal (ของตัวเอง + ยังไม่เริ่ม) ตรงกับกติกา
-              workPlan.delete ฝั่ง API อยู่แล้ว; ปุ่มอยู่ชิดซ้าย แยกจากปุ่มบันทึกกันกดพลาด */}
-          {plan && (
+          {/* ลบได้เฉพาะแผนที่ยังไม่เริ่ม (workPlan.delete เข้มกว่า update — แผนเริ่มแล้วแก้ได้แต่ลบไม่ได้)
+              ปุ่มอยู่ชิดซ้าย แยกจากปุ่มบันทึกกันกดพลาด */}
+          {plan && !started && (
             <button
               type="button"
               className="btn-danger"

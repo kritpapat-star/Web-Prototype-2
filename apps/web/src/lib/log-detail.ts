@@ -6,12 +6,13 @@
 // main ต้องไม่ว่างเสมอ — ตาราง log ไม่มีคอลัมน์ "การกระทำ" แล้ว ช่องนี้เป็นที่เดียวที่บอกว่าเกิดอะไรขึ้น
 // (action ที่ไม่รู้จัก = โชว์ path ดิบ ดีกว่าปล่อยแถวว่าง)
 
-import { fmtDayMonth } from "./format";
+import { fmtAppointment, fmtDayMonth } from "./format";
 
 // pathname → ชื่อหน้าที่คนอ่านออก (ไม่รู้จัก = โชว์ path ดิบ)
 const PAGE_NAMES: Record<string, string> = {
   "/": "เข้าสู่ระบบ",
   "/dashboard": "งานของฉัน",
+  "/tickets": "แจ้งซ่อม",
   "/logs": "ประวัติการใช้งาน",
   "/sites": "ไซต์งาน",
 };
@@ -45,11 +46,26 @@ function pageName(p: unknown): string {
   return PAGE_NAMES[p] ?? p;
 }
 
+// ชื่อประเภทจากค่าใน log — types.id เป็น Int ตั้งแต่ 20 ก.ค. 2026 (log ใหม่เก็บเลข)
+// log เก่าเป็น string ("1") หรือรหัสยุค enum เดิม (SOLAR) — รับหมดเพราะ log เป็น append-only
+function typeName(v: unknown): string {
+  if (typeof v !== "string" && typeof v !== "number") return "";
+  if (v === "") return "";
+  return TYPE_NAMES[String(v)] ?? String(v);
+}
+
 // "2026-07-04T00:00:00.000Z" → "04/07/2026" (ค่าเป็น UTC-midnight เลย format ด้วย UTC เหมือน fmtDayMonth)
 function fmtDate(v: unknown): string {
   if (typeof v !== "string" && !(v instanceof Date)) return "";
   const d = new Date(v as string);
   return isNaN(d.getTime()) ? "" : fmtDayMonth(d);
+}
+
+// timestamp จริง (เช่น appointmentAt ของเคส) — ต่างจาก fmtDate: format ตามเวลาไทย ไม่ใช่ UTC
+function fmtInstant(v: unknown): string {
+  if (typeof v !== "string" && !(v instanceof Date)) return "";
+  const d = new Date(v as string);
+  return isNaN(d.getTime()) ? "" : fmtAppointment(d);
 }
 
 type LogLike = { action: string; detail: unknown };
@@ -70,7 +86,7 @@ export function describeLog(log: LogLike): LogDescription {
     case "workPlan.create": {
       const name = typeof d.name === "string" ? d.name : "";
       const sub = [
-        typeof d.type === "string" ? (TYPE_NAMES[d.type] ?? d.type) : "",
+        typeName(d.type),
         [fmtDate(d.startDate), fmtDate(d.endDate)].filter(Boolean).join(" – "),
       ]
         .filter(Boolean)
@@ -82,8 +98,7 @@ export function describeLog(log: LogLike): LogDescription {
     case "workPlan.update": {
       const parts: string[] = [];
       if (typeof d.name === "string") parts.push(`เปลี่ยนชื่อ → “${d.name}”`);
-      if (typeof d.type === "string" && d.type)
-        parts.push(`เปลี่ยนประเภท → ${TYPE_NAMES[d.type] ?? d.type}`);
+      if (typeName(d.type)) parts.push(`เปลี่ยนประเภท → ${typeName(d.type)}`);
       const start = fmtDate(d.startDate);
       if (start) parts.push(`เลื่อนวันเริ่ม → ${start}`);
       const end = fmtDate(d.endDate);
@@ -121,6 +136,60 @@ export function describeLog(log: LogLike): LogDescription {
     }
     case "site.delete":
       return { main: "ลบไซต์งาน" };
+
+    // เคสลูกค้า — detail คือ raw input ของ ticket.* (+ workPlanId ที่ accept ฝากไว้ผ่าน ctx.audit)
+    // siteId/appointmentAt/reason ถูกตัดจาก schema แล้ว (slim tickets 20 ก.ค. 2026) — คงโค้ด render ไว้
+    // เพราะ log เก่าใน DB ยังมี field พวกนี้ (append-only) ส่วน log ใหม่ไม่มีก็ข้ามเงื่อนไขไปเอง
+    case "ticket.create": {
+      const title = typeof d.title === "string" ? d.title : "";
+      const appt = fmtInstant(d.appointmentAt);
+      const sub = [
+        typeName(d.type),
+        appt ? `นัด ${appt}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return { main: title ? `เปิดแจ้งซ่อม “${title}”` : "เปิดแจ้งซ่อม", sub: sub || undefined };
+    }
+
+    // แก้เคส — บอกเฉพาะ field ที่เปลี่ยน (null = ล้างค่า ตามสัญญา ticket.update)
+    case "ticket.update": {
+      const parts: string[] = [];
+      if (typeof d.title === "string") parts.push(`เปลี่ยนหัวข้อ → “${d.title}”`);
+      if (d.type !== undefined)
+        parts.push(typeName(d.type) ? `เปลี่ยนประเภท → ${typeName(d.type)}` : "ล้างประเภทงาน");
+      if (d.siteId !== undefined)
+        parts.push(typeof d.siteId === "number" ? `ย้ายไซต์ → #${d.siteId}` : "เปลี่ยนเป็นงานใหม่ (ไม่มีไซต์)");
+      // assigneeId = ชื่อเดิมก่อน rename เป็น assignedId (20 ก.ค. 2026) — คงไว้อ่าน log เก่า
+      const assignedId = typeof d.assignedId === "number" ? d.assignedId : d.assigneeId;
+      if (typeof assignedId === "number") parts.push(`เปลี่ยนผู้รับแจ้งซ่อม → user #${assignedId}`);
+      if (d.appointmentAt !== undefined) {
+        const appt = fmtInstant(d.appointmentAt);
+        parts.push(appt ? `เลื่อนนัด → ${appt}` : "ล้างนัดหมาย");
+      }
+      if (d.detail !== undefined) parts.push("แก้รายละเอียด");
+      return { main: parts.length ? parts.join(" · ") : "แก้ไขแจ้งซ่อม" };
+    }
+
+    // รับเคสเป็นแผน — detail มีชื่อ/ช่วงวันของแผนใหม่ + เลขแผน (workPlanId ฝากจาก handler)
+    case "ticket.accept": {
+      const name = typeof d.name === "string" ? d.name : "";
+      const sub = [
+        [fmtDate(d.startDate), fmtDate(d.endDate)].filter(Boolean).join(" – "),
+        typeof d.workPlanId === "number" ? `แผน #${d.workPlanId}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return { main: name ? `รับแจ้งซ่อมเป็นแผน “${name}”` : "รับแจ้งซ่อมเป็นแผนงาน", sub: sub || undefined };
+    }
+
+    case "ticket.close": {
+      const reason = typeof d.reason === "string" ? d.reason.trim() : "";
+      return { main: "ปิดแจ้งซ่อม", sub: reason || undefined };
+    }
+    // mutation ถูกถอดแล้ว 20 ก.ค. 2026 (รูปแนบเคส) — คง case ไว้ให้ log เก่าใน DB ยัง render ได้
+    case "ticket.removeImage":
+      return { main: "ลบรูปแนบแจ้งซ่อม" };
 
     // login จงใจไม่เก็บ detail (มี password ใน input) — บอกแค่ว่าเข้าสู่ระบบ
     case "auth.login":

@@ -48,6 +48,33 @@ export function fmtTime(d: Date): string {
   });
 }
 
+// "04/07/2026" — วันที่ของ instant จริงตามเวลาไทย (ต่างจาก fmtFullDate ที่เป็น UTC สำหรับ @db.Date)
+// ใช้กับ appointmentAt ของเคสลูกค้า (timestamp เต็ม ไม่ใช่ UTC-midnight)
+export function fmtDateICT(d: Date): string {
+  return d.toLocaleDateString(DMY, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+// นัดหมายเคสลูกค้า — เวลา 00:00 = ผู้ใช้กรอกแค่วันไม่ระบุเวลา → โชว์เฉพาะวัน กันเข้าใจผิดว่านัดเที่ยงคืน
+export function fmtAppointment(d: Date): string {
+  const time = fmtTime(d);
+  const date = fmtDateICT(d);
+  return time === "00:00" ? date : `${date} ${time}`;
+}
+
+// "14:30" → "14:30" — ตรวจรูปแบบเวลา HH:mm (24 ชม.) จากช่องพิมพ์เอง
+// ผิดรูป/เกินช่วง (เช่น 25:70) → null (ผู้เรียกถือว่ายังกรอกไม่เสร็จ — pattern เดียวกับ parseDMY)
+export function parseTimeHM(s: string): string | null {
+  const m = /^(\d{2}):(\d{2})$/.exec(s.trim());
+  if (!m) return null;
+  if (Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  return `${m[1]}:${m[2]}`;
+}
+
 // "04/07/2026" → "2026-07-04" (ISO) — ตัวผกผันของ fmtFullDate ใช้กับช่องกรอกวันที่ที่พิมพ์เอง
 // (เลิกใช้ <input type="date"> เพราะ format แสดงผลของมันตาม locale เครื่อง บังคับ dd/mm/yyyy ไม่ได้)
 // พิมพ์ไม่ครบรูป / ไม่ใช่วันจริง (เช่น 31/02/2026) → null (ให้ผู้เรียกถือว่ายังไม่ได้กรอง)

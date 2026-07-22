@@ -1,0 +1,19 @@
+# docker-compose.lan.yml — เปิดให้เครื่องอื่นใน "LAN ออฟฟิศ" เข้าตรงๆ (ทดลองใช้จริงก่อนมีโดเมน)
+#   docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+#
+# ต่างจากไฟล์หลัก: bind ports ออกทุก interface (ไม่ใช่แค่ 127.0.0.1) ที่ 3001/4001
+# — 3000/4000 ปล่อยให้ pnpm dev ใช้เหมือนเดิม (เครื่องนี้เป็นเครื่อง dev ด้วย)
+# ⚠️ HTTP เปล่าใน LAN — token ไม่เข้ารหัส ใช้เฉพาะช่วงทดลองในออฟฟิศเท่านั้น
+#    เมื่อโดเมนพร้อมให้สลับไป docker-compose.tunnel.yml (ดู DEPLOY.md)
+#
+# .env ที่ใช้คู่กัน: WEB_ORIGIN=http://<IP เครื่องนี้>:3001, PUBLIC_API_URL=http://<IP เครื่องนี้>:4001/trpc
+# IP เครื่องนี้ควร fix ไว้ (static/DHCP reservation) — IP เปลี่ยนแล้วทุกเครื่องเข้าไม่ได้ + ต้อง build web ใหม่
+
+services:
+  api:
+    ports: !override
+      - "4001:4000"
+
+  web:
+    ports: !override
+      - "3001:3000"

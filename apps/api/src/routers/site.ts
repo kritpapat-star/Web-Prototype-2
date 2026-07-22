@@ -9,7 +9,7 @@ import { router, protectedProcedure, engineerProcedure } from "../trpc";
 
 const siteFields = z.object({
   name: z.string().trim().min(1, "ต้องระบุชื่อไซต์งาน").max(200),
-  typeIds: z.array(z.string().min(1)), // types.id (เลขลำดับ เช่น "1") — [] = ไม่ระบุประเภท
+  typeIds: z.array(z.number().int().positive()), // types.id (เลขลำดับ เช่น 1) — [] = ไม่ระบุประเภท
 });
 
 export const siteRouter = router({
@@ -84,8 +84,9 @@ export const siteRouter = router({
     }),
 
   // DELETE — Engineer เท่านั้น (ไซต์ไม่มีเจ้าของ — engineer คนไหนก็ลบได้ เหมือน create)
-  // ไซต์ที่มีแผนงานอ้างอยู่ลบไม่ได้ (FK work_plans.siteId เป็น Restrict) — เช็ค count เอง
+  // ไซต์ที่มีแผนงานอ้างอยู่ลบไม่ได้ (FK Restrict) — เช็ค count เอง
   // เพื่อให้ error เป็นภาษาไทย แทน P2003 ดิบจาก Postgres
+  // (ใบแจ้งซ่อมไม่ผูกไซต์แล้ว — slim schema 20 ก.ค. 2026)
   // ประเภทของไซต์ (ตารางเชื่อม _SiteToType) หลุดตามอัตโนมัติ — ตัว Type ไม่ถูกลบ
   delete: engineerProcedure
     .input(z.object({ id: z.number().int().positive() }))

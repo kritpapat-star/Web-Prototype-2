@@ -23,12 +23,14 @@
 เมื่อ API เปลี่ยน contract → web ขึ้น type error ทันทีตอน compile
 (ผลข้างเคียงที่ตั้งใจ: tsc ฝั่ง web ไล่เช็ค source ของ api ด้วย จึงต้อง `prisma generate` ก่อน)
 
-## Data model (5 models)
+## Data model (6 models)
 
 ```
 User 1 ─── N WorkPlan N ─── 1 Type (optional)
 User 1 ─── N AuditLog
 Site N ─── M Type   (implicit m-n — ตารางเชื่อม _SiteToType ที่ Prisma จัดการเอง)
+User 1 ─── N Ticket (assignee) / User 1 ─── N Ticket (createdBy)
+Ticket N ─── 1 Site (optional) · N ─── 1 Type (optional) · 1 ─── 0..1 WorkPlan (ตอน accept)
 ```
 
 - `User`: id (Int เลขรัน autoincrement — เดิมเป็น cuid, แปลงใน `20260711000000_numeric_user_ids`
@@ -52,6 +54,14 @@ Site N ─── M Type   (implicit m-n — ตารางเชื่อม _S
 - `AuditLog` (`audit_logs`): append-only (**ห้ามมี update/delete**) — userId, action (tRPC path),
   targetId (text เสมอ), detail (Json), createdAt; ผู้เขียนมีแค่ middleware `auditMutation` ใน `trpc.ts`
   (ทุก mutation สำเร็จ) + login ใน `auth.ts` + click telemetry ผ่าน `auditLog.track`
+- `Ticket` (`tickets` — ตั้งแต่ 18 ก.ค. 2026): เคสลูกค้าโทรเข้า — title, detail?, type? (FK → `types.id`),
+  siteId? (**nullable** — เคสงานใหม่เช่น survey ยังไม่มีไซต์), assigneeId (FK → users — ต้องเป็น ENGINEER),
+  createdById (ทุก role รวม CEO — ข้อยกเว้น RBAC ที่อนุมัติแล้ว), appointmentAt? (**instant เต็ม**
+  ไม่ใช่ `@db.Date` — ห้ามผ่าน `dateOnlyICT`), workPlanId? (unique FK → work_plans, SetNull —
+  set ตอน "รับเป็นแผนงาน"; ลบแผนแล้วเคสกลับมาเปิด), closedAt?/closeReason? (ปิดโดยไม่แปลง)
+  **สถานะ derived** (ไม่มี column status): เปิด/รับเป็นแผนแล้ว/ปิดแล้ว จาก workPlanId+closedAt
+  (รูปแนบเคส/`TicketImage` ถูกถอดออก 20 ก.ค. 2026 — ตาราง `ticket_images` drop แล้ว
+  รูปจะย้ายไปเก็บนอก DB ที่อื่น ยังไม่กำหนด — ดู AGENT.md lock 2)
 - `siteId` เป็น FK → `sites.id` — user เลือกจาก dropdown ใน PlanModal (กรองตาม `Site.types`
   ตามประเภทงานที่เลือก — ล็อกจนกว่าจะเลือกประเภท จึงบังคับ `type` ตอน create ไปด้วย)
   ตั้งแต่ 11 ก.ค. 2026 ใน `20260711074613_link_work_plan_site`: backfill placeholder "ไซต์ #N"
@@ -111,10 +121,18 @@ web เก็บ token แล้วแนบ `Authorization: Bearer` ทุก r
 
 - หลัง login ทุกหน้าอยู่ใน **AppShell** เดียว (`apps/web/src/components/app-shell.tsx`):
   sidebar แบรนด์ "Be Connected" + เมนู + การ์ด user/logout และ topbar (ชื่อหน้า + กระดิ่ง)
-  เมนูที่ใช้ได้จริง: "งานของฉัน" (`/dashboard`) + "ไซต์งาน" (`/sites`) +
+  เมนูที่ใช้ได้จริง: "งานของฉัน" (`/dashboard`) + "เคสลูกค้า" (`/tickets`) + "ไซต์งาน" (`/sites`) +
   "ประวัติการใช้งาน" (`/logs` — ทุก role: engineer เห็นเฉพาะของตัวเอง / CEO เห็นทุกคน, scope ที่ API)
   — ที่เหลือ (คลังอุปกรณ์ / ยืม-คืน / ลงเวลา / ลา)
   เป็น placeholder ตามแผน reset scope จะเปิดใช้เมื่อ module นั้นถูกหยิบกลับมา
+- `/tickets` = "เคสลูกค้า" (ตั้งแต่ 18 ก.ค. 2026): คิวกลาง — ทุกคนเห็นทุกเคส (`ticket.list` ไม่ scope)
+  ปุ่ม "+ เปิดเคส" มี**ทุก role รวม CEO** (จุดเดียวในระบบที่ CEO มีปุ่ม mutation — ข้อยกเว้นที่อนุมัติแล้ว)
+  แถวเคสกดเปิด detail modal (รูปแนบ + ปุ่มแก้ไข/ปิดเคส/รับเป็นแผนงาน ตามสิทธิ์+สถานะ)
+  modal ทั้งหมดอยู่ `components/ticket-modals.tsx` — ใช้ร่วมกับ `TicketBanner` บน dashboard
+  ("เคสที่ได้รับมอบหมาย" จาก `ticket.todo` — นี่คือแจ้งเตือนตอน login รายวัน; ไม่มีเคส = ไม่ render)
+  ปุ่ม "รับเป็นแผนงาน" → `AcceptModal` บังคับประเภท+ไซต์ตามกติกา `workPlan.create`
+  (เคสไม่มีไซต์สร้างใหม่ inline ผ่าน `site.create` เดิมได้) — แผนที่ได้โผล่ปฏิทิน/TodayBanner ทันที
+  สี/ป้ายสถานะเคสมีที่เดียว: `TICKET_STATUS_META` ใน `lib/ticket-status.ts` (คู่กับ `STATUS_META` ของแผน)
 - `/sites` = "ไซต์งาน" — มุมมองแผนงานรายเดือนแบบกรองตามประเภท (`type`) ใช้ `workPlan.list({type?})`
   ตัวเดียวกับปฏิทิน + ค้นหาข้ามเดือนด้วย `workPlan.search({q, type?})` (ชื่อแผน / เลขไซต์ `"12"`/`"#5"`);
   filter-only page (ไม่มีปุ่ม mutation — สร้าง/แก้ทำที่ `/dashboard`)

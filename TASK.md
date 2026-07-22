@@ -1,6 +1,6 @@
 # TASK.md — สถานะงาน
 
-> อัปเดตล่าสุด: 15 ก.ค. 2026
+> อัปเดตล่าสุด: 18 ก.ค. 2026
 > กติกา: งานเสร็จให้ย้ายลง Done พร้อมวันที่ / งานใหม่เข้า Backlog ก่อนเสมอ
 
 ## ✅ Done
@@ -137,6 +137,18 @@
       seed บังคับ `SEED_PASSWORD` (guard production ทำงานจริง), login ได้ token, RBAC ผ่าน
       (no-token UNAUTHORIZED / CEO ยิง mutation FORBIDDEN), web render 200 — ปิด Next ข้อ 3 เดิม
       เก็บกวาดแล้ว (`down -v`) — เหลือเฉพาะขั้นบน server จริง (รอ SSH + โดเมนจากเจ้าของ)
+- [x] เปิดใช้จริงในวง LAN ออฟฟิศ — 15 ก.ค. 2026: ตัดสินใจไม่รอโดเมน ให้ทีมลองใช้ก่อนผ่าน
+      `http://192.168.1.121:3001` (compose override ใหม่ `docker-compose.lan.yml` bind 3001/4001
+      ออกทุก interface — HTTP เปล่าเฉพาะช่วงทดลองใน LAN) + `.env` ชี้ IP เครื่องนี้ (ค่าโดเมน
+      comment รอสลับกลับ) + แก้บั๊ก healthcheck api ใน compose (`localhost` → `::1` ใน alpine
+      แต่ Fastify bind IPv4 → unhealthy ตลอด; เปลี่ยนเป็น `127.0.0.1` หาย) + up + seed จริง
+      (volume `erp_pgdata` — ข้อมูลชุดนี้ต่อเนื่องไปเป็นข้อมูลจริงเมื่อสลับเข้า tunnel)
+      ทดสอบผ่าน LAN IP: web 200 / login ได้ token / CORS ตรง origin — firewall ไม่ต้องแก้
+      (rule "Docker Desktop Backend" allow Public + Wi-Fi เป็น Public อยู่แล้ว)
+      ⚠️ IP ยังเป็น DHCP — ควรตั้ง reservation ที่ router ไม่งั้น IP เปลี่ยน = ล่ม + ต้อง build web ใหม่
+- [x] ปุ่ม "แก้ไข" ใน banner สิ่งที่ต้องทำวันนี้ — 18 ก.ค. 2026: TodayBanner รับ `onEdit` จาก
+      dashboard เปิด PlanModal ตัวเดียวกับหน้าแผนงาน (ไม่มีฟอร์มซ้ำ) — โชว์เฉพาะแผนที่ยังไม่กดเริ่ม
+      กติกาเดียวกับ `workPlan.update` (Engineer เห็นแต่แผนตัวเองใน todo อยู่แล้ว / CEO ไม่มีปุ่ม)
 
 ## 🔨 Doing
 
@@ -144,9 +156,10 @@
 
 ## ⏭️ Next (เรียงตามลำดับแนะนำ)
 
-1. [ ] Deploy บนเครื่องนี้เป็น server ชั่วคราว + Cloudflare Tunnel (ตัดสินใจ 15 ก.ค. 2026 —
-       compose tunnel + .env + auto-start เตรียมแล้ว เหลือ: โดเมนเข้า Cloudflare → TUNNEL_TOKEN
-       → เติม .env → up → seed → เปลี่ยนรหัส → backup — ไล่ตาม DEPLOY.md หัวข้อ Cloudflare Tunnel)
+1. [ ] สลับ LAN → Cloudflare Tunnel เมื่อโดเมนพร้อม (stack รัน + seed แล้วในโหมด LAN —
+       เหลือ: โดเมนเข้า Cloudflare → TUNNEL_TOKEN → สลับ `.env` กลับเป็นค่าโดเมน → up ด้วย
+       tunnel.yml (web ถูก build ใหม่เพราะ `PUBLIC_API_URL` เปลี่ยน — ข้อมูลใน volume อยู่ครบ)
+       → เปลี่ยนรหัสรายคน → backup — ไล่ตาม DEPLOY.md หัวข้อ Cloudflare Tunnel)
 2. [ ] ย้ายขึ้น VPS จริงเมื่อพร้อม (เครื่องออฟฟิศไฟดับ/เน็ตหลุด = ล่มทั้งทีม — ของชั่วคราวเท่านั้น
        ย้ายด้วย pg_dump → restore ตามท้าย DEPLOY.md)
 3. [ ] ปฏิทินรวม CEO: filter รายคน (API รับ `userId` (int) แล้ว — เหลือ dropdown ฝั่งเว็บ)

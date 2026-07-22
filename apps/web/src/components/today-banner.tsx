@@ -3,7 +3,7 @@
 // banner "สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน" — วางบนสุดของ /dashboard
 // - ข้อมูลจาก workPlan.todo: แผนที่ทับวันนี้ + งานค้างจากวันก่อน (ไม่ผูกกับเดือนที่ดูในปฏิทิน
 //   เพราะ window รายเดือนมองไม่เห็นงานค้างข้ามเดือน — ดู ARCHITECTURE.md)
-// - แถบสรุปประจำวัน: นับแผนตาม status / รายการ: ปุ่มเริ่ม/จบงาน (Engineer เท่านั้น)
+// - แถบสรุปประจำวัน: นับแผนตาม status / รายการ: ปุ่มเริ่ม/จบงาน + แก้ไข (Engineer เท่านั้น)
 // - ช้ากว่าแผน → เปิด dialog บังคับกรอกเหตุผล ให้ตรงกับ validation ฝั่ง API (start/finish)
 // - CEO เป็น view-only: เห็นสรุปทั้งทีมพร้อมชื่อคน แต่ไม่มีปุ่ม mutation ใดๆ ตาม RBAC
 
@@ -24,6 +24,7 @@ type TodoPlan = {
   id: number;
   siteId: number;
   name: string;
+  type?: number | null; // types.id — ฟอร์มแก้ไข (PlanModal) ต้องใช้
   startDate: Date;
   endDate: Date;
   actStart: Date | null;
@@ -35,7 +36,16 @@ type TodoPlan = {
 
 type ReasonDialog = { planId: number; planName: string; kind: "start" | "finish" } | null;
 
-export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
+export function TodayBanner({
+  today,
+  isCEO,
+  onEdit,
+}: {
+  today: Date;
+  isCEO: boolean;
+  // เปิด modal แก้ไขแผน (PlanModal ของหน้า dashboard) — banner ไม่มีฟอร์มเอง ใช้ตัวเดียวกับหน้าแผนงาน
+  onEdit: (plan: TodoPlan) => void;
+}) {
   const utils = trpc.useUtils();
   const todos = trpc.workPlan.todo.useQuery();
   const [dialog, setDialog] = useState<ReasonDialog>(null);
@@ -168,14 +178,24 @@ export function TodayBanner({ today, isCEO }: { today: Date; isCEO: boolean }) {
                 </span>
 
                 {!isCEO && !plan.actStart && (
-                  <button className="btn-primary btn-sm" disabled={acting} onClick={() => onStart(plan)}>
-                    เริ่มงาน
-                  </button>
+                  <>
+                    <button className="btn-primary btn-sm" disabled={acting} onClick={() => onStart(plan)}>
+                      เริ่มงาน
+                    </button>
+                    {/* แก้ได้จนกว่าจะจบงาน (กติกาเดียวกับ workPlan.update — แผนที่เริ่มแล้ว modal ล็อกวันเริ่มให้)
+                        Engineer เห็นแต่แผนตัวเองใน todo อยู่แล้ว จึงไม่ต้องเช็คเจ้าของซ้ำ */}
+                    <button className="btn-ghost btn-sm" onClick={() => onEdit(plan)}>
+                      แก้ไข
+                    </button>
+                  </>
                 )}
                 {!isCEO && plan.actStart && !plan.actEnd && (
                   <>
                     <button className="btn-primary btn-sm" disabled={acting} onClick={() => onFinish(plan)}>
                       จบงาน
+                    </button>
+                    <button className="btn-ghost btn-sm" onClick={() => onEdit(plan)}>
+                      แก้ไข
                     </button>
                     {/* กดเริ่มผิด → ถอยกลับเป็น "ยังไม่เริ่ม" (สองจังหวะกันมือลั่น)
                         จากนั้นแผนกลับมาแก้/ลบได้ตามกติกาเดิม — แผนที่จบแล้วไม่มีปุ่มนี้ */}

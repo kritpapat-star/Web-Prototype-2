@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NotificationBell } from "./notification-bell";
 
 type NavItem = {
   key: string;
@@ -18,6 +19,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: "my-work", label: "งานของฉัน", href: "/dashboard", enabled: true },
+  { key: "tickets", label: "แจ้งซ่อม", href: "/tickets", enabled: true },
   { key: "sites", label: "ไซต์งาน", href: "/sites", enabled: true },
   { key: "logs", label: "ประวัติการใช้งาน", href: "/logs", enabled: true },
   { key: "inventory", label: "คลังอุปกรณ์", enabled: false },
@@ -85,21 +87,7 @@ export function AppShell({
       <div className="content">
         <header className="topbar">
           <h1>{title}</h1>
-          <button className="bell-btn" aria-label="การแจ้งเตือน" title="การแจ้งเตือน (เร็วๆ นี้)">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-            </svg>
-          </button>
+          <NotificationBell />
         </header>
 
         <div className="page">{children}</div>

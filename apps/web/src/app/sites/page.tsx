@@ -15,8 +15,8 @@ import { trpc, getToken, setToken } from "../../lib/trpc";
 import { typeColor } from "../../lib/plan-types";
 import { AppShell } from "../../components/app-shell";
 
-// ค่า filter: "ALL" หรือ types.id (เลขลำดับ เช่น "1")
-type TypeFilter = "ALL" | (string & {});
+// ค่า filter: "ALL" หรือ types.id (เลขลำดับ เช่น 1 — Int ตั้งแต่ 20 ก.ค. 2026)
+type TypeFilter = "ALL" | number;
 
 export default function SitesPage() {
   const router = useRouter();
@@ -192,9 +192,9 @@ function SiteModal({ onClose }: { onClose: () => void }) {
   const utils = trpc.useUtils();
 
   const [name, setName] = useState("");
-  const [typeIds, setTypeIds] = useState<string[]>([]);
+  const [typeIds, setTypeIds] = useState<number[]>([]);
 
-  const toggleType = (id: string) =>
+  const toggleType = (id: number) =>
     setTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const create = trpc.site.create.useMutation({

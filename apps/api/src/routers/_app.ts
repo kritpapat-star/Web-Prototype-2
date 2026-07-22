@@ -5,6 +5,9 @@ import { workPlanRouter } from "./workPlan";
 import { auditLogRouter } from "./auditLog";
 import { typeRouter } from "./type";
 import { siteRouter } from "./site";
+import { ticketRouter } from "./ticket";
+import { userRouter } from "./user";
+import { notificationRouter } from "./notification";
 
 export const appRouter = router({
   auth: authRouter,
@@ -12,6 +15,9 @@ export const appRouter = router({
   auditLog: auditLogRouter,
   type: typeRouter,
   site: siteRouter,
+  ticket: ticketRouter,
+  user: userRouter,
+  notification: notificationRouter,
 });
 
 // type นี้คือสัญญาที่ฝั่งเว็บ import ไปใช้ (ผ่าน monorepo package)

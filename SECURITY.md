@@ -52,6 +52,11 @@
    - เปลี่ยนรหัสรายคน: `pnpm user:password <username> <รหัสใหม่>` (`apps/api/scripts/set-password.ts`)
    ยังค้าง: หน้าเปลี่ยนรหัสผ่าน + บังคับเปลี่ยนครั้งแรกใน UI (อยู่ใน Backlog ของ TASK.md)
 
+5. ~~Token ใน query string ของรูปแนบเคส~~ — **หมดประเด็นแล้ว 20 ก.ค. 2026**: ฟีเจอร์รูปแนบเคส
+   ถูกถอดออกทั้งชุด (endpoint `/uploads/*` ถูกลบ — เลิกเก็บรูป/metadata ใน DB, จะย้ายไปเก็บที่อื่น)
+   ถ้าฟีเจอร์รูปกลับมาในรูปแบบเสิร์ฟไฟล์ผ่าน API อีก ให้ทบทวน trade-off นี้ใหม่ (token ใน query string
+   โผล่ใน access log — ทางยกระดับคือ signed URL อายุสั้นแยกจาก JWT หลัก)
+
 (DEV BYPASS login ที่เคยเปิดชั่วคราว 4 ก.ค. 2026 **ลบออกแล้ว** — login จริงทำงานทั้งระบบตั้งแต่ 8 ก.ค. 2026)
 
 ## Checklist ก่อน deploy production

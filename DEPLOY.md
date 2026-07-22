@@ -82,6 +82,22 @@ docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
   และหลัง reboot ต้องมีคน **sign-in Windows หนึ่งครั้ง** container ถึงจะขึ้น — ตั้ง sleep เป็น never แล้ว
 - ไฟดับ/เน็ตหลุด = ทั้งทีมใช้ไม่ได้ — เป็นของชั่วคราวจนกว่าจะย้ายขึ้น VPS (แผนใน TASK.md)
 
+## โหมดทดลองในวง LAN ออฟฟิศ (ใช้อยู่ตอนนี้ — ระหว่างรอโดเมน)
+
+ให้ทีมลองใช้จริงก่อนโดยไม่ต้องมีโดเมน/HTTPS — เข้าจากเครื่อง/มือถือบน Wi-Fi ออฟฟิศที่
+`http://<IP เครื่อง server>:3001` (ตอนนี้คือ `http://192.168.1.121:3001`)
+
+```bash
+# .env: WEB_ORIGIN=http://<IP>:3001, PUBLIC_API_URL=http://<IP>:4001/trpc
+docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+```
+
+- ⚠️ **HTTP เปล่า — token ไม่เข้ารหัส** ยอมรับได้เฉพาะวง LAN ออฟฟิศช่วงทดลองเท่านั้น ห้าม forward port ออก internet
+- IP เครื่อง server ต้องนิ่ง — ตั้ง DHCP reservation ที่ router (IP เปลี่ยน = ทุกเครื่องเข้าไม่ได้ และต้อง build web ใหม่เพราะ `PUBLIC_API_URL` ถูก bake)
+- ใช้ volume `erp_pgdata` ตัวเดียวกับ production — สลับไป Cloudflare Tunnel ทีหลังข้อมูลอยู่ครบ
+  (สลับ: แก้ `.env` กลับเป็นค่าโดเมน แล้ว up ด้วย `docker-compose.tunnel.yml` แทน `lan.yml`)
+- firewall Windows: rule "Docker Desktop Backend" allow inbound (Public) มีอยู่แล้ว — ไม่ต้องเปิดอะไรเพิ่ม
+
 ## Deploy ครั้งแรก
 
 ```bash
@@ -117,6 +133,11 @@ crontab -e
 ```bash
 30 2 * * * rclone copy /var/backups/erp gdrive:erp-backups
 ```
+
+> ⚠️ ฟีเจอร์รูปแนบเคสถูกถอดออกแล้ว 20 ก.ค. 2026 (volume `uploads` ถูกเอาออกจาก compose)
+> แต่ volume `erp_uploads` บนเครื่องที่เคย deploy **ยังมีไฟล์รูปเก่าอยู่** — เก็บไว้เป็น backup
+> อย่าลบ (`docker volume rm erp_uploads`) จนกว่าที่เก็บรูปใหม่จะพร้อมและย้ายไฟล์เสร็จ
+> ถ้าจะสำรองออกมาก่อน: `docker run --rm -v erp_uploads:/data -v /var/backups/erp:/out alpine tar czf /out/uploads-$(date +%F).tar.gz -C /data .`
 
 กู้คืน: `gunzip -c erp-YYYYMMDD-HHMMSS.sql.gz | docker compose exec -T db psql -U beconnected -d erp`
 

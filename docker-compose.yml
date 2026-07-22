@@ -48,7 +48,8 @@ services:
       # ⚠️ ถ้าเปิด "4000:4000" เฉยๆ Docker จะทะลุ firewall (ufw) ออก public เลย
       - "127.0.0.1:4000:4000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      # ใช้ 127.0.0.1 ตรงๆ — "localhost" ใน alpine resolve เป็น ::1 (IPv6) ก่อน แต่ Fastify bind เฉพาะ IPv4
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
       interval: 10s
       retries: 3
 
@@ -69,3 +70,5 @@ services:
 
 volumes:
   pgdata:
+  # volume `uploads` เดิม (รูปแนบเคส — ฟีเจอร์ถูกถอด 20 ก.ค. 2026) ถูกเอาออกจาก compose แล้ว
+  # แต่ erp_uploads ยังอยู่บนเครื่อง server — เก็บไว้เป็น backup รูปเก่าจนกว่าที่เก็บรูปใหม่จะพร้อม

@@ -56,6 +56,42 @@ export const LOG_ACTION_GROUPS: { label: string; items: LogActionFilter[] }[] = 
     ],
   },
   {
+    label: "แจ้งซ่อม",
+    items: [
+      {
+        code: "TICKET_CREATED",
+        label: "เปิดแจ้งซ่อม",
+        match: ["ticket.create", "TICKET_CREATED"],
+        logged: true,
+      },
+      {
+        code: "TICKET_UPDATED",
+        label: "แก้ไขแจ้งซ่อม",
+        match: ["ticket.update", "TICKET_UPDATED"],
+        logged: true,
+      },
+      {
+        code: "TICKET_ACCEPTED",
+        label: "รับแจ้งซ่อมเป็นแผนงาน",
+        match: ["ticket.accept", "TICKET_ACCEPTED"],
+        logged: true,
+      },
+      {
+        code: "TICKET_CLOSED",
+        label: "ปิดแจ้งซ่อม",
+        match: ["ticket.close", "TICKET_CLOSED"],
+        logged: true,
+      },
+      {
+        // mutation ถูกถอดแล้ว 20 ก.ค. 2026 (รูปแนบเคส) — คงไว้ให้ filter/label ครอบ log เก่าใน DB
+        code: "TICKET_IMAGE_REMOVED",
+        label: "ลบรูปแนบแจ้งซ่อม",
+        match: ["ticket.removeImage", "TICKET_IMAGE_REMOVED"],
+        logged: true,
+      },
+    ],
+  },
+  {
     label: "งาน",
     items: [
       { code: "JOB_CREATED", label: "สร้างงาน", match: ["JOB_CREATED"], logged: false },

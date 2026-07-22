@@ -4,19 +4,11 @@
 // middleware (protectedProcedure / engineerProcedure) เหมือนเดิมทุกบรรทัด
 
 import { initTRPC, TRPCError } from "@trpc/server";
-import jwt from "jsonwebtoken";
 import superjson from "superjson";
 import { prisma } from "./db";
-import { JWT_SECRET } from "./lib/env"; // ตรวจความแข็งแรงของ secret ตอน start ที่นั่นที่เดียว
+import { verifyToken, type JwtPayload } from "./lib/auth-token"; // verify + type ย้ายไปที่เดียว (uploads.ts ใช้ด้วย)
 
-// payload ที่เราใส่ไว้ใน token ตอน login
-// sub เป็นเลขรัน users.id (Int) — จงใจไม่ตาม RFC ที่ให้ sub เป็น string
-// เพราะใช้ token ภายในระบบเดียว และ query Prisma ได้ตรงๆ ไม่ต้อง parse
-export type JwtPayload = {
-  sub: number; // user id (เลขรัน 1, 2, 3, …)
-  role: "CEO" | "ENGINEER";
-  name: string;
-};
+export type { JwtPayload }; // re-export — auth.ts (และคนอื่น) import จากที่นี่ตามเดิม
 
 // ---------- CONTEXT ----------
 // สร้างต่อ 1 request: อ่าน "Authorization: Bearer <token>" → verify → ได้ user
@@ -31,21 +23,9 @@ export async function createContext({
 }: {
   req: { headers: Record<string, string | string[] | undefined>; ip?: string };
 }) {
-  let user: JwtPayload | null = null;
-
   const header = req.headers.authorization;
   const token = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : null;
-
-  if (token) {
-    try {
-      // ผ่าน unknown เพราะ type ของ lib กำหนด sub?: string แต่ของเรา sub เป็นเลขรัน (ดู JwtPayload)
-      user = jwt.verify(token, JWT_SECRET) as unknown as JwtPayload;
-      // token รุ่นเก่า sub เป็น cuid (string) — ชี้ user ที่ renumber เป็นเลขไปแล้ว ให้ login ใหม่
-      if (typeof user.sub !== "number") user = null;
-    } catch {
-      user = null; // token หมดอายุ/ปลอม — ปฏิบัติเหมือนไม่ได้ login
-    }
-  }
+  const user: JwtPayload | null = verifyToken(token); // กติกา verify อยู่ใน lib/auth-token.ts ที่เดียว
 
   // ช่องให้ handler ฝาก detail เพิ่มเข้า audit log ได้ (server-observed truth ที่ raw input ไม่มี
   // — เช่น site.update ฝากชื่อเดิมก่อนแก้) auditMutation รวมค่านี้เข้า detail ตอนเขียน log

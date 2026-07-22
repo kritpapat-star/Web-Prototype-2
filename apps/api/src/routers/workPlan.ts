@@ -8,49 +8,18 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import type { PrismaClient } from "@prisma/client";
 import { router, protectedProcedure, engineerProcedure } from "../trpc";
 import { dateOnlyICT } from "../lib/dates";
-
-// type ต้องมีจริงใน table types — เช็คเองเพื่อให้ error เป็นภาษาไทย แทน FK error ดิบจาก Postgres
-async function assertTypeExists(prisma: PrismaClient, typeId: string | undefined) {
-  if (!typeId) return;
-  const found = await prisma.type.findUnique({ where: { id: typeId } });
-  if (!found) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "ประเภทงานไม่ถูกต้อง" });
-  }
-}
-
-// ไซต์ต้องมีจริง + รองรับประเภทงานของแผน (dropdown ฝั่ง web กรองให้แล้ว — เช็คซ้ำกันยิงตรง/client เก่า)
-// type เป็น null ได้เฉพาะแผนเก่าก่อนบังคับประเภท (ตอน update ที่ไม่ได้แตะ type) — เช็คแค่ไซต์มีจริง
-async function assertSiteMatchesType(
-  prisma: PrismaClient,
-  siteId: number,
-  typeId: string | null,
-) {
-  const site = await prisma.site.findUnique({
-    where: { id: siteId },
-    select: { types: { select: { id: true } } },
-  });
-  if (!site) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "ไม่พบไซต์งานที่เลือก" });
-  }
-  if (typeId && !site.types.some((t) => t.id === typeId)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "ไซต์งานที่เลือกไม่รองรับประเภทงานนี้",
-    });
-  }
-}
+import { assertTypeExists, assertSiteMatchesType } from "../lib/asserts"; // ย้ายไป lib เพราะ ticket.ts ใช้ด้วย
 
 // ---------- zod schemas ----------
 
 // siteId เลือกจาก dropdown (FK → sites.id) — เลิก gen จาก sequence แล้ว (11 ก.ค. 2026)
-// type อ้าง types.id (เลขลำดับ เช่น "1") — บังคับตอน create เพราะ dropdown ไซต์กรองตามประเภท
+// type อ้าง types.id (เลขลำดับ เช่น 1 — Int ตั้งแต่ 20 ก.ค. 2026) — บังคับตอน create เพราะ dropdown ไซต์กรองตามประเภท
 // (แผนเก่าที่ type เป็น null ยังอยู่ได้ — update ไม่บังคับเติม) ตัวเลือกมาจาก type.list ไม่ hardcode
 const planFields = z.object({
   name: z.string().min(1, "ต้องระบุชื่อแผนงาน").max(200),
-  type: z.string().min(1, "ต้องเลือกประเภทงาน"),
+  type: z.number({ message: "ต้องเลือกประเภทงาน" }).int().positive(),
   siteId: z.number().int().positive(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
@@ -60,14 +29,14 @@ const monthInput = z.object({
   year: z.number().int().min(2020).max(2100),
   month: z.number().int().min(1).max(12), // 1-12
   userId: z.number().int().optional(), // CEO ใช้ filter รายคน / Engineer ห้ามส่ง
-  type: z.string().min(1).optional(), // filter ตาม types.id (หน้าไซต์งาน)
+  type: z.number().int().positive().optional(), // filter ตาม types.id (หน้าไซต์งาน)
 });
 
 // ค้นหาข้ามเดือน (หน้าไซต์งาน) — q ค้นชื่อแผน + เลขไซต์, type กรองร่วม (optional)
 // แยกจาก monthInput เพื่อไม่ให้กระทบ window รายเดือนของ list (ใช้กับปฏิทิน dashboard ด้วย)
 const searchInput = z.object({
   q: z.string().trim().min(2, "พิมพ์อย่างน้อย 2 ตัวอักษร"),
-  type: z.string().min(1).optional(),
+  type: z.number().int().positive().optional(),
 });
 
 // q ที่เป็นเลขไซต์: "12" หรือ "#5" (ใส่ # ช่วยให้เลขหลักเดียวผ่าน min 2 ตัวอักษรได้)
@@ -207,7 +176,11 @@ export const workPlanRouter = router({
   }),
 
   // ============================================================
-  // UPDATE — แก้ชื่อ/เลื่อนวันแผน (ก่อนเริ่มงานเท่านั้น)
+  // UPDATE — แก้รายละเอียดแผน (เจ้าของแผน)
+  //   ยังไม่เริ่ม: แก้ได้ทุก field / เริ่มแล้ว (18 ก.ค. 2026): แก้ได้ยกเว้น "วันเริ่ม"
+  //   — วันเริ่มผูกกับ actStart/delayStartReason ที่บันทึกไปแล้ว (กติกา delay reason ใน AGENT.md)
+  //     เลื่อนย้อนหลังจะทำให้เหตุผลเริ่มช้าเพี้ยน ถ้าจำเป็นจริงให้ "ยกเลิกเริ่มงาน" ก่อน
+  //   จบงานแล้ว: ล็อกทั้งแผน — เป็นประวัติที่ปิดสมบูรณ์
   // ============================================================
   update: engineerProcedure
     .input(planFields.partial().extend({ id: z.number().int().positive() }))
@@ -217,16 +190,23 @@ export const workPlanRouter = router({
       if (plan.userId !== ctx.user.sub) {
         throw new TRPCError({ code: "FORBIDDEN", message: "แก้ได้เฉพาะแผนของตัวเอง" });
       }
-      if (plan.actStart) {
+      if (plan.actEnd) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "แผนที่เริ่มงานแล้ว แก้วันที่/ชื่อไม่ได้ (กันประวัติเพี้ยน)",
+          message: "แผนที่จบงานแล้ว แก้ไขไม่ได้ (กันประวัติเพี้ยน)",
         });
       }
 
       // normalize เฉพาะ field ที่ส่งมา — ที่ไม่ส่งใช้ค่าเดิมใน DB (เป็น UTC เที่ยงคืนอยู่แล้ว)
       const startDate = input.startDate ? dateOnlyICT(input.startDate) : plan.startDate;
       const endDate = input.endDate ? dateOnlyICT(input.endDate) : plan.endDate;
+      // เทียบค่าหลัง normalize — client ที่เผลอส่งวันเริ่มค่าเดิมกลับมาไม่ถือว่าแก้
+      if (plan.actStart && startDate.getTime() !== plan.startDate.getTime()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "แผนที่เริ่มงานแล้ว แก้วันเริ่มไม่ได้ — ถ้าจำเป็นให้กดยกเลิกเริ่มงานก่อน",
+        });
+      }
       if (endDate < startDate) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "วันจบต้องไม่มาก่อนวันเริ่ม" });
       }
@@ -248,7 +228,7 @@ export const workPlanRouter = router({
     }),
 
   // ============================================================
-  // DELETE — ลบแผน (กติกาเดียวกับ update: เจ้าของ + ยังไม่กดเริ่ม)
+  // DELETE — ลบแผน (เจ้าของ + ยังไม่กดเริ่มเท่านั้น — เข้มกว่า update ที่ยอมให้แก้แผนที่เริ่มแล้ว)
   //   แผนที่เริ่มงานแล้วห้ามลบ — เป็นประวัติการทำงานจริง กันประวัติเพี้ยน
   //   audit log ของ mutation นี้ถูกเขียนโดย middleware อัตโนมัติ (targetId = id ที่ลบ)
   //   ส่วน log เก่าที่อ้าง id นี้ยังอยู่ครบ (append-only — targetId เป็น text ไม่มี FK)
@@ -307,9 +287,9 @@ export const workPlanRouter = router({
 
   // ============================================================
   // UNSTART — ปุ่ม "ยกเลิกเริ่มงาน" (เคสกดเริ่มผิดแผน/ผิดจังหวะ)
-  //   ล้าง actStart + delayStartReason → แผนกลับเป็น "ยังไม่เริ่ม" แล้วแก้/ลบต่อได้ตามกติกาเดิม
-  //   จงใจ "ถอยสถานะ" แทนการเจาะข้อยกเว้นให้ลบแผนที่เริ่มแล้ว — กติกา
-  //   "แผนที่เริ่มแล้วห้ามแก้/ลบ" ยังจริงเสมอ และการยกเลิกถูก audit log อัตโนมัติ (ตามรอยได้)
+  //   ล้าง actStart + delayStartReason → แผนกลับเป็น "ยังไม่เริ่ม" แล้วแก้วันเริ่ม/ลบต่อได้ตามกติกาเดิม
+  //   จงใจ "ถอยสถานะ" แทนการเจาะข้อยกเว้น — กติกา "แผนที่เริ่มแล้วห้ามแก้วันเริ่ม/ห้ามลบ"
+  //   ยังจริงเสมอ และการยกเลิกถูก audit log อัตโนมัติ (ตามรอยได้)
   //   แผนที่จบงานแล้วยกเลิกไม่ได้ — เป็นประวัติงานที่ปิดสมบูรณ์แล้ว
   // ============================================================
   unstart: engineerProcedure

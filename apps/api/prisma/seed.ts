@@ -28,11 +28,11 @@ async function main() {
   // ---------- Types (lookup table — id เป็นเลขลำดับคงที่ ใช้เป็นค่า work_plans.type) ----------
   // ชุดเดียวกับใน migration — upsert กัน drift (จำกัด ~5 ประเภท เรียงตาม id ดู schema.prisma)
   const Types = [
-    { id: "1", name: "Solar Cell" },
-    { id: "2", name: "CCTV" },
-    { id: "3", name: "Network" },
-    { id: "4", name: "IOT" },
-    { id: "5", name: "Software" },
+    { id: 1, name: "Solar Cell" },
+    { id: 2, name: "CCTV" },
+    { id: 3, name: "Network" },
+    { id: 4, name: "IOT" },
+    { id: 5, name: "Software" },
   ];
   for (const t of Types) {
     await prisma.type.upsert({ where: { id: t.id }, update: t, create: t });

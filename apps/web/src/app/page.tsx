@@ -5,10 +5,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { trpc, getToken, setToken } from "../lib/trpc";
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -20,6 +22,10 @@ export default function LoginPage() {
   const login = trpc.auth.login.useMutation({
     onSuccess: (res) => {
       setToken(res.token);
+      // ล้าง cache ทั้งหมดก่อนเข้า dashboard — ไม่งั้น auth.me ที่ error ค้างจากรอบ
+      // token หมดอายุจะโดน effect ฝั่ง dashboard อ่านเจอแล้วล้าง token ใหม่ทิ้ง
+      // (อาการ "ต้อง refresh ถึงจะ login ได้") + กันข้อมูล user เก่าโผล่ตอนสลับบัญชี
+      queryClient.removeQueries();
       router.push("/dashboard");
     },
   });
