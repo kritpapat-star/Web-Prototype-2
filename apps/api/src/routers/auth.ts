@@ -72,7 +72,7 @@ export const authRouter = router({
         // ⚠️ ห้ามเก็บ input เด็ดขาด (มี password) — detail มีแค่ ip ต้นทาง
         if (user) {
           try {
-            await ctx.prisma.auditLog.create({
+            await ctx.prisma.log.create({
               data: { userId: user.id, action: "LOGIN_FAILED", detail: { ip: ctx.ip } },
             });
           } catch (err) {
@@ -92,7 +92,7 @@ export const authRouter = router({
       // log login ตรงนี้เอง — middleware audit ใน trpc.ts ครอบไม่ถึง publicProcedure
       // ⚠️ ห้ามเก็บ input เด็ดขาด (มี password)
       try {
-        await ctx.prisma.auditLog.create({
+        await ctx.prisma.log.create({
           data: { userId: user.id, action: "auth.login" },
         });
       } catch (err) {

@@ -5,7 +5,8 @@
 //   2. แผนงาน        → รายการแผนทั้งเดือน + สร้าง/แก้ไข/ลบแผน (ทำได้เฉพาะแผนของตัวเองที่ยังไม่เริ่ม)
 //   3. สิ่งที่ต้องทำ  → งานวันนี้ + งานค้าง พร้อมปุ่มเริ่ม/จบงาน (TodayBanner)
 //   4. สรุปงาน       → นับ status ประจำวัน + รายการจัดกลุ่มตาม status (SummaryPanel)
-// CEO เป็น view-only ตาม RBAC — ไม่มีปุ่ม mutation ใดๆ
+// 24 ก.ค. 2026: CEO สร้าง+จัดการ "แผนของตัวเอง" ได้แล้ว (ย้อน lock #6) — ปุ่ม mutation gate ด้วย
+// ownership (plan.userId === myId) ไม่ใช่ role: Engineer เห็นแต่แผนตัวเอง / CEO เห็นทุกแผนแต่แก้ได้เฉพาะของตัวเอง
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,6 +19,8 @@ import { MonthCalendar } from "../../components/month-calendar";
 import { TodayBanner } from "../../components/today-banner";
 import { TicketBanner } from "../../components/ticket-banner";
 import { SummaryPanel } from "../../components/summary-panel";
+import { DatePicker } from "../../components/date-picker";
+import { DelayTag } from "../../components/delay-tag";
 
 // ข้อมูลแผนเท่าที่ form แก้ไขใช้ (หยิบจากแถวใน list)
 type EditablePlan = {
@@ -101,18 +104,27 @@ export default function DashboardPage() {
 
   // แถวแผน — หน้าตาเดียวกันทั้งแผงรายวันและรายการทั้งเดือน (ต่างกันแค่ปุ่มแก้ไข)
   const planRow = (plan: (typeof dayPlans)[number], withEdit: boolean) => {
-    const meta = STATUS_META[planStatus(plan, today)];
+    const status = planStatus(plan, today);
+    const meta = STATUS_META[status];
+    const isOverdue = status === "NOT_STARTED_OVERDUE" || status === "IN_PROGRESS_OVERDUE";
     const typeMeta = plan.type
       ? { ...typeColor(plan.type), label: typeNameById.get(plan.type) ?? plan.type }
       : null;
     // แก้ได้เฉพาะแผนของตัวเองที่ยังไม่จบงาน — แผนที่เริ่มแล้วแก้ได้ยกเว้นวันเริ่ม
     // (กติกาเดียวกับ workPlan.update ฝั่ง API — modal เป็นคนล็อกช่องวันเริ่มเอง)
-    const editable = withEdit && !isCEO && plan.userId === myId && !plan.actEnd;
+    // gate ด้วย ownership ไม่ใช่ role: CEO เห็นแผนทุกคนแต่แก้ได้เฉพาะแผนที่ตัวเองสร้าง
+    const editable = withEdit && plan.userId === myId && !plan.actEnd;
     return (
       <div key={plan.id} className="plan-row">
         <span className="dot" style={{ background: plan.user.color }} />
         <div className="plan-main">
-          <div className="plan-name">{plan.name}</div>
+          <div className="plan-name">
+            {plan.name}
+            {isOverdue && <span className="carry-tag">งานค้าง</span>}
+            {/* แผนที่เริ่ม/จบช้ากว่าแผน — ชิป status มองไม่เห็น (จบช้ายังเป็นเขียว "เสร็จแล้ว")
+                ป้ายนี้ทำให้ตรงกับหน้า /delays ของ CEO */}
+            <DelayTag plan={plan} today={today} />
+          </div>
           <div className="plan-sub">
             {isCEO && <>{plan.user.name} · </>}
             {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
@@ -200,11 +212,10 @@ export default function DashboardPage() {
       <section className="day-panel">
         <div className="panel-head">
           <h2>แผนงานเดือน{monthTitle}</h2>
-          {!isCEO && (
-            <button className="btn-primary" onClick={() => setCreating(true)}>
-              + เพิ่มแผน
-            </button>
-          )}
+          {/* เพิ่มแผน: ทุก role รวม CEO (แผนใหม่เป็นของคน login) — 24 ก.ค. 2026 */}
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            + เพิ่มแผน
+          </button>
         </div>
 
         {plans.isLoading ? (
@@ -217,7 +228,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ---------- 3) สิ่งที่ต้องทำ ---------- */}
-      <TodayBanner today={today} isCEO={isCEO} onEdit={setEditing} />
+      <TodayBanner today={today} isCEO={isCEO} myId={myId} onEdit={setEditing} />
 
       {/* ---------- 4) สรุปงาน ---------- */}
       <SummaryPanel today={today} isCEO={isCEO} />
@@ -228,7 +239,7 @@ export default function DashboardPage() {
   );
 }
 
-// ---------- modal สร้าง/แก้ไขแผน (Engineer เท่านั้น) ----------
+// ---------- modal สร้าง/แก้ไขแผน (ทุก role รวม CEO — แผนเป็นของคน login) ----------
 // โหมดแก้ไข: ส่งเฉพาะ field ที่เปลี่ยนจริง — ตามกติกา "อย่า write field ที่ user ไม่ได้แก้" (AGENT.md)
 // ไซต์งานเลือกจาก dropdown (FK → sites) — ล็อกจนกว่าจะเลือกประเภทงาน แล้วกรองตาม Site.types
 // → แผนใหม่จึงต้องมีประเภทงานเสมอ (แผนเก่าที่ type ว่างยังแก้ field อื่นได้โดยไม่บังคับเติม)
@@ -256,8 +267,8 @@ function PlanModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [typeV, setTypeV] = useState<string>(plan?.type != null ? String(plan.type) : ""); // "" = ยังไม่เลือก / อื่นๆ = types.id (DOM เก็บ string — แปลงเป็นเลขตอนส่ง)
   const [siteIdV, setSiteIdV] = useState<string>(plan ? String(plan.siteId) : ""); // "" = ยังไม่เลือก
-  // ช่องวันที่พิมพ์เป็น dd/mm/yyyy เอง (คุมช่องเอง เพราะ <input type=date> เนทีฟ
-  // แสดงผลตาม locale เครื่อง บังคับ dd/mm/yyyy ไม่ได้ — pattern เดียวกับหน้า log)
+  // ช่องวันที่เลือกจากปฏิทิน popover (DatePicker) — ค่ายังเป็น dd/mm/yyyy เหมือนเดิม
+  // เลี่ยง <input type=date> เนทีฟตาม decision เดิม (มันแสดงผลตาม locale เครื่อง บังคับ dd/mm/yyyy ไม่ได้)
   const [start, setStart] = useState(fmtFullDate(plan?.startDate ?? defaultDate ?? dateOnlyICT(new Date())));
   const [end, setEnd] = useState(fmtFullDate(plan?.endDate ?? defaultDate ?? dateOnlyICT(new Date())));
 
@@ -383,16 +394,13 @@ function PlanModal({
         <div className="field-row">
           <label className="field">
             วันเริ่ม
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={start && !startISO ? "invalid" : undefined}
+            <DatePicker
               value={start}
-              onChange={(e) => setStart(e.target.value)}
-              required
+              onChange={setStart}
+              placeholder="dd/mm/yyyy"
+              invalid={!!(start && !startISO)}
               disabled={started}
+              aria-label="วันเริ่ม"
             />
             {started && (
               <span className="field-hint">เริ่มงานแล้ว — แก้วันเริ่มได้เมื่อกดยกเลิกเริ่มงานก่อน</span>
@@ -400,15 +408,13 @@ function PlanModal({
           </label>
           <label className="field">
             วันจบ
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={end && (!endISO || rangeInvalid) ? "invalid" : undefined}
+            <DatePicker
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              required
+              onChange={setEnd}
+              placeholder="dd/mm/yyyy"
+              min={startISO ? start : undefined}
+              invalid={!!(end && (!endISO || rangeInvalid))}
+              aria-label="วันจบ"
             />
             {rangeInvalid && <span className="field-hint">วันจบต้องไม่ก่อนวันเริ่ม</span>}
           </label>

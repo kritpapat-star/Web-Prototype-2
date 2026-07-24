@@ -36,8 +36,10 @@ export const siteRouter = router({
       return site;
     }),
 
-  // CREATE — Engineer เท่านั้น (CEO view-only ตาม RBAC — ห้ามมี mutation ที่ CEO เรียกได้)
-  create: engineerProcedure.input(siteFields).mutation(async ({ ctx, input }) => {
+  // CREATE — ทุก role รวม CEO (protectedProcedure)
+  // 24 ก.ค. 2026 (เจ้าของสั่ง): เปิดให้ CEO เพิ่มไซต์ได้ — ย้อน lock #6 เดิม (ไซต์ไม่มีเจ้าของ ใครก็สร้างได้)
+  // ส่วน update/delete ยังเป็น engineerProcedure (เจ้าของขอเปิดเฉพาะ "เพิ่มไซต์")
+  create: protectedProcedure.input(siteFields).mutation(async ({ ctx, input }) => {
     // dedupe กันติ๊กซ้ำ/client ส่ง id ซ้ำ — connect id เดียวกันสองครั้งจะชน PK ตารางเชื่อม
     const typeIds = [...new Set(input.typeIds)];
 
@@ -58,17 +60,21 @@ export const siteRouter = router({
     });
   }),
 
-  // UPDATE — แก้ชื่อไซต์ (Engineer เท่านั้น) — จากปุ่ม "แก้ไขชื่อ" หน้า site detail
-  // แก้เฉพาะชื่อ (ประเภท m-n ยังไม่มี UI แก้) — เช็คว่ามีไซต์จริงก่อน เพื่อให้ error เป็นภาษาไทย แทน P2025 ดิบ
+  // UPDATE — แก้ชื่อไซต์และประเภท (Engineer เท่านั้น) — จากปุ่ม "แก้ชื่อ" หน้า site detail
+  // name + typeIds (หลายประเภทได้ — m-n กับ Type ต่างจากแผนที่มี 1 type)
+  // ฟอร์มแก้ไข prefill ประเภทเดิมแล้วส่งชุดเต็มที่ติ๊กจริงกลับมาเสมอ → set แทนที่ทั้งชุด
+  // (ติ๊กออกหมด = ส่ง [] = ตั้งใจเคลียร์ประเภททั้งหมด) — typeIds เป็น optional เผื่อ caller
+  // ที่ไม่อยากแตะประเภท (omit = undefined = ไม่แตะ set)
   update: engineerProcedure
     .input(
       z.object({
         id: z.number().int().positive(),
         name: z.string().trim().min(1, "ต้องระบุชื่อไซต์งาน").max(200),
+        typeIds: z.array(z.number().int().positive()).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // อ่านชื่อเดิมก่อนเขียนทับ — ต้องอ่านที่นี่ เพราะ audit log เขียนหลัง update สำเร็จ (ชื่อถูกทับไปแล้ว)
+      // อ่านข้อมูลเดิมก่อนเขียนทับ — ต้องอ่านที่นี่ เพราะ audit log เขียนหลัง update สำเร็จ (ข้อมูลถูกทับไปแล้ว)
       const prev = await ctx.prisma.site.findUnique({
         where: { id: input.id },
         select: { name: true },
@@ -78,7 +84,12 @@ export const siteRouter = router({
       ctx.audit.prevName = prev.name;
       return ctx.prisma.site.update({
         where: { id: input.id },
-        data: { name: input.name },
+        data: {
+          name: input.name,
+          ...(input.typeIds && {
+            types: { set: input.typeIds.map((id) => ({ id })) },
+          }),
+        },
         include: { types: true }, // mirror create — ให้ web refresh ได้เลยโดยไม่ query ซ้ำ
       });
     }),

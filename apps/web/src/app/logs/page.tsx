@@ -16,6 +16,7 @@ import { describeLog, isPlaceholderSiteName } from "../../lib/log-detail";
 import { groupLogsByDay } from "../../lib/log-group";
 import { LOG_ACTION_BY_CODE, DEFAULT_EXCLUDED_ACTIONS } from "../../lib/log-actions";
 import { AppShell } from "../../components/app-shell";
+import { DatePicker } from "../../components/date-picker";
 
 // action ที่ต้องสะดุดตาในตาราง — เหตุการณ์ทำลายข้อมูล/สัญญาณ security ห้ามจมหายไปกับแถวปกติ
 const DANGER_ACTIONS = new Set(["workPlan.delete", "site.delete", "LOGIN_FAILED"]);
@@ -26,10 +27,10 @@ export default function LogsPage() {
   const [ready, setReady] = useState(false);
   // "วันนี้" ตามเวลาไทย — fix ครั้งเดียว ใช้ตัดสินหัวข้อ "วันนี้/เมื่อวาน" + ขอบเวลาของแถบสรุป
   const [today] = useState(() => dateOnlyICT(new Date()));
-  // filter ช่วงวันที่ — ผู้ใช้พิมพ์เป็น dd/mm/yyyy เอง (คุมช่องเอง เพราะ <input type=date>
-  // เนทีฟบังคับ format แสดงผลไม่ได้ มันตาม locale ของเครื่อง)
-  const [fromText, setFromText] = useState("");
-  const [toText, setToText] = useState("");
+  // filter ช่วงวันที่ — เลือกจากปฏิทิน popover (DatePicker), ค่ายังเป็น dd/mm/yyyy
+  // default = วันนี้ทั้งสองช่อง (ตรงกับแถบสรุปวันนี้) ผู้ใช้ล้างตัวกรองได้ = กลับเป็นทั้งหมด
+  const [fromText, setFromText] = useState(fmtFullDate(today));
+  const [toText, setToText] = useState(fmtFullDate(today));
   // filter ประเภทการกระทำ — เก็บเป็นรหัสมาตรฐาน ("" = ทั้งหมด) แล้วแปลงเป็นชุด action จริงตอนยิง query
   // ไม่มี dropdown ให้เลือกเองแล้ว — ตั้งค่าผ่านการกด tile ในแถบสรุป (filterTodayBy) ทางเดียว
   const [actionCode, setActionCode] = useState("");
@@ -55,7 +56,7 @@ export default function LogsPage() {
   const me = trpc.auth.me.useQuery(undefined, { enabled: ready, retry: false });
   const isCeo = me.data?.role === "CEO";
 
-  const logs = trpc.auditLog.list.useQuery(
+  const logs = trpc.log.list.useQuery(
     {
       limit: 100,
       from: fromInstant,
@@ -73,11 +74,11 @@ export default function LogsPage() {
   const todayISO = today.toISOString().slice(0, 10);
   const todayStart = new Date(`${todayISO}T00:00:00+07:00`);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
-  const summary = trpc.auditLog.summary.useQuery(
+  const summary = trpc.log.summary.useQuery(
     { from: todayStart, to: todayEnd },
     { enabled: ready && isCeo },
   );
-  const users = trpc.auditLog.users.useQuery(undefined, { enabled: ready && isCeo });
+  const users = trpc.log.users.useQuery(undefined, { enabled: ready && isCeo });
 
   // token หมดอายุ/ใช้ไม่ได้ → ล้าง token แล้วเด้งกลับหน้า login
   useEffect(() => {
@@ -208,26 +209,23 @@ export default function LogsPage() {
           )}
           <label className="log-filter-field">
             จาก
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={fromText && !fromISO ? "log-date-input invalid" : "log-date-input"}
+            <DatePicker
               value={fromText}
-              onChange={(e) => setFromText(e.target.value)}
+              onChange={setFromText}
+              placeholder="dd/mm/yyyy"
+              invalid={!!(fromText && !fromISO)}
+              aria-label="จากวันที่"
             />
           </label>
           <label className="log-filter-field">
             ถึง
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={toText && !toISO ? "log-date-input invalid" : "log-date-input"}
+            <DatePicker
               value={toText}
-              onChange={(e) => setToText(e.target.value)}
+              onChange={setToText}
+              placeholder="dd/mm/yyyy"
+              min={fromISO ? fromText : undefined}
+              invalid={!!(toText && !toISO)}
+              aria-label="ถึงวันที่"
             />
           </label>
           {filterActive && (

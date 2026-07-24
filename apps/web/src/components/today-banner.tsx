@@ -3,9 +3,11 @@
 // banner "สิ่งที่ต้องทำวันนี้ + สรุปประจำวัน" — วางบนสุดของ /dashboard
 // - ข้อมูลจาก workPlan.todo: แผนที่ทับวันนี้ + งานค้างจากวันก่อน (ไม่ผูกกับเดือนที่ดูในปฏิทิน
 //   เพราะ window รายเดือนมองไม่เห็นงานค้างข้ามเดือน — ดู ARCHITECTURE.md)
-// - แถบสรุปประจำวัน: นับแผนตาม status / รายการ: ปุ่มเริ่ม/จบงาน + แก้ไข (Engineer เท่านั้น)
+// - แถบสรุปประจำวัน: นับแผนตาม status / รายการ: ปุ่มเริ่ม/จบงาน + แก้ไข
 // - ช้ากว่าแผน → เปิด dialog บังคับกรอกเหตุผล ให้ตรงกับ validation ฝั่ง API (start/finish)
-// - CEO เป็น view-only: เห็นสรุปทั้งทีมพร้อมชื่อคน แต่ไม่มีปุ่ม mutation ใดๆ ตาม RBAC
+//   เหตุผลความล่าช้าเก็บตอนกดเริ่ม/จบเท่านั้น (กดจบก็บังคับกรอกอยู่แล้ว จึงไม่มีปุ่มระบุเหตุผลแยก)
+// - ปุ่ม mutation gate ด้วย ownership (plan.user.id === myId) ไม่ใช่ role — 24 ก.ค. 2026 (ย้อน lock #6):
+//   CEO เห็นสรุปทั้งทีมพร้อมชื่อคน + กดเริ่ม/จบ/แก้ ได้เฉพาะแผนที่ตัวเองสร้าง
 
 import { useState } from "react";
 import { trpc } from "../lib/trpc";
@@ -18,6 +20,7 @@ import {
   STATUS_META,
 } from "../lib/status";
 import { fmtDayMonth, fmtFullDate } from "../lib/format";
+import { DelayTag } from "./delay-tag";
 
 // โครงข้อมูลเท่าที่ banner ใช้ (แบบเดียวกับ CalendarPlan ใน month-calendar)
 type TodoPlan = {
@@ -34,15 +37,23 @@ type TodoPlan = {
   user: { id: number; name: string; color: string };
 };
 
-type ReasonDialog = { planId: number; planName: string; kind: "start" | "finish" } | null;
+// initial = ค่าที่เคยกรอกไว้ (prefill ช่องเหตุผล) — กันพิมพ์ซ้ำถ้าเคยมีเหตุผลอยู่แล้ว
+type ReasonDialog = {
+  planId: number;
+  planName: string;
+  kind: "start" | "finish";
+  initial?: string;
+} | null;
 
 export function TodayBanner({
   today,
   isCEO,
+  myId,
   onEdit,
 }: {
   today: Date;
-  isCEO: boolean;
+  isCEO: boolean; // ใช้โชว์ชื่อเจ้าของแผน (CEO เห็นหลายคนปนกัน)
+  myId: number; // gate ปุ่มเริ่ม/จบ/แก้ ตามเจ้าของแผน (ทั้ง CEO และ Engineer เห็นเฉพาะปุ่มของแผนตัวเอง)
   // เปิด modal แก้ไขแผน (PlanModal ของหน้า dashboard) — banner ไม่มีฟอร์มเอง ใช้ตัวเดียวกับหน้าแผนงาน
   onEdit: (plan: TodoPlan) => void;
 }) {
@@ -60,7 +71,8 @@ export function TodayBanner({
   const [confirmUnstartId, setConfirmUnstartId] = useState<number | null>(null);
 
   const acting = start.isPending || finish.isPending || unstart.isPending;
-  const actError = start.error?.message ?? finish.error?.message ?? unstart.error?.message;
+  const actError =
+    start.error?.message ?? finish.error?.message ?? unstart.error?.message;
 
   // งานค้างจากวันก่อน = ช่วงแผนผ่านไปแล้วแต่ยังไม่กดจบงาน
   const isCarryOver = (p: TodoPlan) => !p.actEnd && p.endDate < today;
@@ -72,10 +84,14 @@ export function TodayBanner({
   const rows = sortByStatusPriority(plans, today);
 
   // เช็ค "ช้ากว่าแผน" ด้วยวันปัจจุบัน ณ ตอนกด (ไม่ใช้ today ที่ fix ตอนเปิดหน้า — เผื่อเปิดค้างข้ามคืน)
-  const onStart = (plan: TodoPlan) => {
+  const resetAll = () => {
     start.reset();
     finish.reset();
     unstart.reset();
+  };
+
+  const onStart = (plan: TodoPlan) => {
+    resetAll();
     setConfirmUnstartId(null);
     if (dateOnlyICT(new Date()) > plan.startDate) {
       setDialog({ planId: plan.id, planName: plan.name, kind: "start" });
@@ -85,12 +101,16 @@ export function TodayBanner({
   };
 
   const onFinish = (plan: TodoPlan) => {
-    start.reset();
-    finish.reset();
-    unstart.reset();
+    resetAll();
     setConfirmUnstartId(null);
     if (dateOnlyICT(new Date()) > plan.endDate) {
-      setDialog({ planId: plan.id, planName: plan.name, kind: "finish" });
+      // ถ้าเคยมีเหตุผลจบช้าอยู่แล้ว → prefill ไม่ต้องพิมพ์ใหม่
+      setDialog({
+        planId: plan.id,
+        planName: plan.name,
+        kind: "finish",
+        initial: plan.delayEndReason ?? undefined,
+      });
     } else {
       finish.mutate({ id: plan.id });
     }
@@ -98,9 +118,7 @@ export function TodayBanner({
 
   // กดเริ่มผิดแผน → ยกเลิกกลับเป็น "ยังไม่เริ่ม" (ล้างเหตุผลเริ่มช้าด้วย) แล้วค่อยแก้/ลบตามกติกาเดิม
   const onUnstart = (plan: TodoPlan) => {
-    start.reset();
-    finish.reset();
-    unstart.reset();
+    resetAll();
     if (confirmUnstartId !== plan.id) {
       setConfirmUnstartId(plan.id); // จังหวะแรก — เปลี่ยนปุ่มเป็นขอยืนยัน
       return;
@@ -160,7 +178,8 @@ export function TodayBanner({
                 <div className="plan-main">
                   <div className="plan-name">
                     {plan.name}
-                    {isCarryOver(plan) && <span className="carry-tag">ค้างจากวันก่อน</span>}
+                    {isCarryOver(plan) && <span className="carry-tag">งานค้าง</span>}
+                    <DelayTag plan={plan} today={today} />
                   </div>
                   <div className="plan-sub">
                     {isCEO && <>{plan.user.name} · </>}
@@ -177,19 +196,19 @@ export function TodayBanner({
                   {meta.label}
                 </span>
 
-                {!isCEO && !plan.actStart && (
+                {plan.user.id === myId && !plan.actStart && (
                   <>
                     <button className="btn-primary btn-sm" disabled={acting} onClick={() => onStart(plan)}>
                       เริ่มงาน
                     </button>
                     {/* แก้ได้จนกว่าจะจบงาน (กติกาเดียวกับ workPlan.update — แผนที่เริ่มแล้ว modal ล็อกวันเริ่มให้)
-                        Engineer เห็นแต่แผนตัวเองใน todo อยู่แล้ว จึงไม่ต้องเช็คเจ้าของซ้ำ */}
+                        gate ด้วยเจ้าของแผน: CEO เห็นแผนทุกคนใน todo แต่กดได้เฉพาะแผนตัวเอง */}
                     <button className="btn-ghost btn-sm" onClick={() => onEdit(plan)}>
                       แก้ไข
                     </button>
                   </>
                 )}
-                {!isCEO && plan.actStart && !plan.actEnd && (
+                {plan.user.id === myId && plan.actStart && !plan.actEnd && (
                   <>
                     <button className="btn-primary btn-sm" disabled={acting} onClick={() => onFinish(plan)}>
                       จบงาน
@@ -227,7 +246,27 @@ export function TodayBanner({
   );
 }
 
-// ---------- dialog เหตุผลเมื่อเริ่ม/จบช้ากว่าแผน (กติกา delay reason บังคับที่ API) ----------
+// ---------- dialog เหตุผลความล่าช้า (กติกา delay reason บังคับที่ API) ----------
+// 2 จังหวะที่เปิด: กดเริ่มช้า (start) / กดจบช้า (finish)
+// ต่างกันแค่ข้อความ — ฟอร์มเดียวกันหมด
+
+const DIALOG_TEXT: Record<
+  NonNullable<ReasonDialog>["kind"],
+  { title: string; note: string; label: string; submit: string }
+> = {
+  start: {
+    title: "เริ่มงานช้ากว่าแผน",
+    note: "เลยกำหนดเริ่มแล้ว — ต้องระบุเหตุผลก่อนบันทึก",
+    label: "เหตุผลที่เริ่มช้า",
+    submit: "บันทึกและเริ่มงาน",
+  },
+  finish: {
+    title: "จบงานช้ากว่าแผน",
+    note: "เลยกำหนดจบแล้ว — ต้องระบุเหตุผลก่อนบันทึก",
+    label: "เหตุผลที่จบช้า",
+    submit: "บันทึกและจบงาน",
+  },
+};
 
 function ReasonDialogModal({
   dialog,
@@ -242,8 +281,9 @@ function ReasonDialogModal({
   onSubmit: (reason: string) => void;
   onClose: () => void;
 }) {
-  const [reason, setReason] = useState("");
-  const isStart = dialog.kind === "start";
+  // modal ถูก mount ใหม่ทุกครั้งที่เปิด (render แบบ conditional) → seed ค่าเดิมได้ตรงนี้เลย
+  const [reason, setReason] = useState(dialog.initial ?? "");
+  const text = DIALOG_TEXT[dialog.kind];
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -255,13 +295,13 @@ function ReasonDialogModal({
           onSubmit(reason.trim());
         }}
       >
-        <h3>{isStart ? "เริ่มงานช้ากว่าแผน" : "จบงานช้ากว่าแผน"}</h3>
+        <h3>{text.title}</h3>
         <p className="dialog-note">
-          “{dialog.planName}” {isStart ? "เลยกำหนดเริ่มแล้ว" : "เลยกำหนดจบแล้ว"} — ต้องระบุเหตุผลก่อนบันทึก
+          “{dialog.planName}” {text.note}
         </p>
 
         <label className="field">
-          เหตุผลที่{isStart ? "เริ่ม" : "จบ"}ช้า
+          {text.label}
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -280,7 +320,7 @@ function ReasonDialogModal({
             ยกเลิก
           </button>
           <button type="submit" className="btn-primary" disabled={pending || !reason.trim()}>
-            {pending ? "กำลังบันทึก…" : isStart ? "บันทึกและเริ่มงาน" : "บันทึกและจบงาน"}
+            {pending ? "กำลังบันทึก…" : text.submit}
           </button>
         </div>
       </form>

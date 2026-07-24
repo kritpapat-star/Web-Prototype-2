@@ -219,7 +219,11 @@ export default function SiteDetailPage() {
 
       {editing && site.data && (
         <EditSiteModal
-          site={{ id: site.data.id, name: site.data.name }}
+          site={{
+            id: site.data.id,
+            name: site.data.name,
+            typeIds: site.data.types.map((t) => t.id),
+          }}
           onClose={() => setEditing(false)}
         />
       )}
@@ -227,18 +231,23 @@ export default function SiteDetailPage() {
   );
 }
 
-// ---------- modal แก้ชื่อไซต์ (Engineer เท่านั้น) ----------
-// name-only — ประเภทของไซต์ (m-n) ยังไม่มี UI แก้ ต้องแก้ผ่าน create ใหม่/ภายหลัง
-// สำเร็จแล้ว invalidate site.get (หัวหน้านี้) + site.list (หน้ารายชื่อ) ให้ชื่อใหม่ขึ้นทันที แล้วปิด modal
+// ---------- modal แก้ชื่อและประเภทไซต์ (Engineer เท่านั้น) ----------
+// name + typeIds (หลายประเภทได้ — m-n กับ Type ต่างจากแผนที่มี 1 type)
+// สำเร็จแล้ว invalidate site.get (หัวหน้านี้) + site.list (หน้ารายชื่อ) ให้ข้อมูลใหม่ขึ้นทันที แล้วปิด modal
 function EditSiteModal({
   site,
   onClose,
 }: {
-  site: { id: number; name: string };
+  site: { id: number; name: string; typeIds: number[] };
   onClose: () => void;
 }) {
+  const types = trpc.type.list.useQuery();
   const utils = trpc.useUtils();
   const [name, setName] = useState(site.name);
+  const [typeIds, setTypeIds] = useState<number[]>(site.typeIds);
+
+  const toggleType = (id: number) =>
+    setTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const update = trpc.site.update.useMutation({
     onSuccess: async () => {
@@ -251,7 +260,11 @@ function EditSiteModal({
   });
 
   const trimmed = name.trim();
-  const unchanged = trimmed === site.name; // ไม่มีอะไรเปลี่ยน — กันยิง mutation เปล่า
+  // เทียบชุดประเภทกับของเดิม (ลำดับไม่สำคัญ, toggleType กันซ้ำอยู่แล้ว → length + subset พอ)
+  const sameTypes =
+    typeIds.length === site.typeIds.length &&
+    typeIds.every((id) => site.typeIds.includes(id));
+  const unchanged = trimmed === site.name && sameTypes; // ไม่มีอะไรเปลี่ยน — กันยิง mutation เปล่า
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -260,10 +273,10 @@ function EditSiteModal({
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
-          update.mutate({ id: site.id, name: trimmed });
+          update.mutate({ id: site.id, name: trimmed, typeIds });
         }}
       >
-        <h3>แก้ไขชื่อไซต์งาน</h3>
+        <h3>แก้ไขชื่อและประเภทไซต์งาน</h3>
 
         <label className="field">
           ชื่อไซต์งาน
@@ -275,6 +288,25 @@ function EditSiteModal({
             autoFocus
           />
         </label>
+
+        <div className="field">
+          ประเภทงาน (เลือกได้หลายประเภท)
+          <div className="check-group">
+            {types.isLoading && <span className="empty-note">กำลังโหลด…</span>}
+            {(types.data ?? []).map((t) => {
+              const color = typeColor(t.id);
+              const checked = typeIds.includes(t.id);
+              return (
+                <label key={t.id} className="check-item">
+                  <input type="checkbox" checked={checked} onChange={() => toggleType(t.id)} />
+                  <span className="chip" style={{ background: color.bg, color: color.fg }}>
+                    {t.name}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         {update.error && <p className="form-error">{update.error.message}</p>}
 

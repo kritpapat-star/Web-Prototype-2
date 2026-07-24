@@ -2,14 +2,19 @@
 // Router ของ module "งานของฉัน" — ครบทั้ง 4 หน้าจอ:
 //   ปฏิทิน        → list
 //   แผนงาน        → create / update
-//   สิ่งที่ต้องทำ  → todo + start / finish (พร้อมบังคับ delay reason)
+//   สิ่งที่ต้องทำ  → todo + start / finish (พร้อมบังคับ delay reason) + explainDelay
 //   สรุป          → todo + computed status ฝั่ง client
-//     (สรุปไม่ใช้ list เพราะ window รายเดือนมองไม่เห็นงานค้างข้ามเดือน เช่นแผนจบ 30 มิ.ย. ที่ยังไม่ปิด)
+//     (สรุปยังใช้ `todo` ไม่ใช่ list เพราะ todo ไม่ผูกกับเดือนในปฏิทิน — ส่วน list โชว์แผนค้างได้แล้ว
+//      แต่เฉพาะใน "รายการทั้งเดือน", ปฏิทิน grid ยังวาดแค่แผนที่ทับเดือนจริงๆ)
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, engineerProcedure } from "../trpc";
-import { dateOnlyICT } from "../lib/dates";
+// 24 ก.ค. 2026 (เจ้าของสั่ง): CEO สร้าง+จัดการ "แผนของตัวเอง" ได้ — ย้อน lock #6 เดิม (CEO view-only)
+// mutation ทุกตัวจึงเป็น protectedProcedure (ต้อง login) + เช็ค ownership (plan.userId === ctx.user.sub)
+// เป็นด่านเดียว → CEO/Engineer แตะได้เฉพาะแผนของตัวเอง, engineerProcedure ไม่ใช้ใน module นี้แล้ว
+import { router, protectedProcedure } from "../trpc";
+import { dateOnlyICT, todayICT } from "../lib/dates";
+import { planDelayKind } from "../lib/overdue"; // นิยาม "ล่าช้า" ตัวเดียวกับ overdueRouter
 import { assertTypeExists, assertSiteMatchesType } from "../lib/asserts"; // ย้ายไป lib เพราะ ticket.ts ใช้ด้วย
 
 // ---------- zod schemas ----------
@@ -57,6 +62,7 @@ export const workPlanRouter = router({
   list: protectedProcedure.input(monthInput).query(async ({ ctx, input }) => {
     const monthStart = new Date(Date.UTC(input.year, input.month - 1, 1));
     const monthEnd = new Date(Date.UTC(input.year, input.month, 0)); // วันสุดท้ายของเดือน
+    const today = dateOnlyICT(new Date()); // เทียบ "วันนี้" เหมือน workPlan.todo (เอาไปดักแผนค้างด้านล่าง)
 
     // กติกา RBAC ชั้น query: Engineer ล็อกเป็น id ตัวเองเสมอ
     const userFilter =
@@ -69,10 +75,14 @@ export const workPlanRouter = router({
     return ctx.prisma.workPlan.findMany({
       where: {
         ...userFilter,
-        // แผนที่ "ทับ" กับเดือนที่ดู: startDate ≤ สิ้นเดือน AND endDate ≥ ต้นเดือน
-        startDate: { lte: monthEnd },
-        endDate: { gte: monthStart },
-        ...(input.type ? { type: input.type } : {}), // filter ตามประเภทงาน (หน้าไซต์งาน)
+        OR: [
+          // แผนที่ "ทับ" กับเดือนที่ดู: startDate ≤ สิ้นเดือน AND endDate ≥ ต้นเดือน
+          { startDate: { lte: monthEnd }, endDate: { gte: monthStart } },
+          // ค้างจากวันก่อน (เงื่อนไขเดียวกับ workPlan.todo): ช่วงแผนผ่านไปแล้วแต่ยังไม่กดจบงาน
+          // โชว์ในทุกเดือน เพื่อกันแผนค้างหายจาก "รายการทั้งเดือน" ทันทีที่เปลี่ยนเดือน
+          { endDate: { lt: today }, actEnd: null },
+        ],
+        ...(input.type ? { type: input.type } : {}), // filter ตามประเภทงาน — AND ระดับนอก ใช้กับแผนค้างด้วย
       },
       include: {
         user: { select: { id: true, name: true, color: true } }, // แต้มสีปฏิทินรวม
@@ -155,9 +165,9 @@ export const workPlanRouter = router({
   }),
 
   // ============================================================
-  // CREATE — หน้าแผนงาน (Engineer สร้างของตัวเองเท่านั้น)
+  // CREATE — หน้าแผนงาน (ผู้ใช้สร้างแผนของตัวเอง — CEO/Engineer เหมือนกัน เจ้าของ = คน login)
   // ============================================================
-  create: engineerProcedure.input(planFields).mutation(async ({ ctx, input }) => {
+  create: protectedProcedure.input(planFields).mutation(async ({ ctx, input }) => {
     // normalize เป็น "วันตามเวลาไทย" ที่ UTC เที่ยงคืน — กัน @db.Date ตัดวันเพี้ยน ±1
     const startDate = dateOnlyICT(input.startDate);
     const endDate = dateOnlyICT(input.endDate);
@@ -182,7 +192,7 @@ export const workPlanRouter = router({
   //     เลื่อนย้อนหลังจะทำให้เหตุผลเริ่มช้าเพี้ยน ถ้าจำเป็นจริงให้ "ยกเลิกเริ่มงาน" ก่อน
   //   จบงานแล้ว: ล็อกทั้งแผน — เป็นประวัติที่ปิดสมบูรณ์
   // ============================================================
-  update: engineerProcedure
+  update: protectedProcedure
     .input(planFields.partial().extend({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
@@ -233,7 +243,7 @@ export const workPlanRouter = router({
   //   audit log ของ mutation นี้ถูกเขียนโดย middleware อัตโนมัติ (targetId = id ที่ลบ)
   //   ส่วน log เก่าที่อ้าง id นี้ยังอยู่ครบ (append-only — targetId เป็น text ไม่มี FK)
   // ============================================================
-  delete: engineerProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
@@ -254,7 +264,7 @@ export const workPlanRouter = router({
   // START — ปุ่ม "เริ่มงาน" ในสิ่งที่ต้องทำ
   //   เริ่มช้ากว่าแผน → บังคับกรอก delayStartReason
   // ============================================================
-  start: engineerProcedure
+  start: protectedProcedure
     .input(z.object({ id: z.number().int().positive(), delayStartReason: z.string().max(500).optional() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
@@ -292,7 +302,7 @@ export const workPlanRouter = router({
   //   ยังจริงเสมอ และการยกเลิกถูก audit log อัตโนมัติ (ตามรอยได้)
   //   แผนที่จบงานแล้วยกเลิกไม่ได้ — เป็นประวัติงานที่ปิดสมบูรณ์แล้ว
   // ============================================================
-  unstart: engineerProcedure
+  unstart: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
@@ -320,7 +330,7 @@ export const workPlanRouter = router({
   // FINISH — ปุ่ม "จบงาน" ในสิ่งที่ต้องทำ
   //   จบช้ากว่าแผน → บังคับกรอก delayEndReason
   // ============================================================
-  finish: engineerProcedure
+  finish: protectedProcedure
     .input(z.object({ id: z.number().int().positive(), delayEndReason: z.string().max(500).optional() }))
     .mutation(async ({ ctx, input }) => {
       const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
@@ -351,6 +361,47 @@ export const workPlanRouter = router({
           actEnd: now,
           delayEndReason: isLate ? input.delayEndReason!.trim() : null,
         },
+      });
+    }),
+
+  // ============================================================
+  // EXPLAIN DELAY — ระบุ/แก้เหตุผลความล่าช้า "ระหว่างงานยังค้าง" (ยังไม่กดจบ)
+  //   เดิมเหตุผลถูกเก็บตอนกดเริ่ม/จบเท่านั้น → แผน END_DUE (เลยกำหนดจบแต่ยังไม่กดจบ)
+  //   จึงไม่มีเหตุผลเลย ทั้งที่เป็นแถวที่ CEO ต้องการรู้มากที่สุดในหน้า /delays
+  //   ไม่แก้ schema — เขียนลงคอลัมน์เดิมตามจุดที่ช้า:
+  //     endDate ผ่านไปแล้ว → delayEndReason (เคส END_DUE) / ยังไม่ถึง → delayStartReason (เคส START_LATE)
+  //   validation ยังอยู่ที่ tRPC mutation ที่เดียวตามกติกา AGENT.md ข้อ 5
+  //   audit log เขียนโดย middleware อัตโนมัติ (action = "workPlan.explainDelay")
+  // ============================================================
+  explainDelay: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        reason: z.string().trim().min(1, "ต้องระบุเหตุผล").max(500),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const plan = await ctx.prisma.workPlan.findUnique({ where: { id: input.id } });
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND" });
+      if (plan.userId !== ctx.user.sub) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ระบุเหตุผลได้เฉพาะแผนของตัวเอง" });
+      }
+      // แผนที่จบแล้วเป็นประวัติที่ปิดสมบูรณ์ (กติกาเดียวกับ unstart) — แก้เหตุผลย้อนหลังไม่ได้
+      if (plan.actEnd) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "แผนที่จบงานแล้ว แก้เหตุผลไม่ได้" });
+      }
+
+      const today = todayICT();
+      if (planDelayKind(plan, today) == null) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "แผนนี้ยังไม่ล่าช้า" });
+      }
+
+      const pastEnd = plan.endDate.getTime() < today.getTime();
+      return ctx.prisma.workPlan.update({
+        where: { id: input.id },
+        data: pastEnd
+          ? { delayEndReason: input.reason }
+          : { delayStartReason: input.reason },
       });
     }),
 });

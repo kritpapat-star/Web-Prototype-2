@@ -1,4 +1,4 @@
-// apps/api/src/routers/auditLog.ts
+// apps/api/src/routers/log.ts
 // ประวัติการใช้งาน (audit log) — list ดู log / summary+users แถบสรุปของ CEO / client ส่ง click log เข้า (track)
 // ผู้เขียน log มี 2 ทางโดยตั้งใจ:
 //   1) middleware auditMutation ใน trpc.ts (+ login และ LOGIN_FAILED ใน auth.ts) — mutation ฝั่ง server
@@ -22,7 +22,7 @@ const SUMMARY_ACTIONS = [
 // targetId เก็บเป็น text เสมอ — ของ workPlan.*/site.* เป็นเลขรัน แปลงกลับเป็น Int ได้เมื่อเป็นเลขล้วน
 const numericId = (v: string | null): number | null => (v && /^\d+$/.test(v) ? Number(v) : null);
 
-export const auditLogRouter = router({
+export const logRouter = router({
   // ============================================================
   // LIST — log ล่าสุดเรียงใหม่→เก่า / filter รายคน + ช่วงวันที่ + ประเภทได้
   // scope ตาม role (เหมือน workPlan): ENGINEER เห็นเฉพาะ log ของตัวเอง / CEO เห็นทุกคน + filter รายคนได้
@@ -46,7 +46,7 @@ export const auditLogRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const logs = await ctx.prisma.auditLog.findMany({
+      const logs = await ctx.prisma.log.findMany({
         where: {
           // engineer ล็อกไว้ที่ log ตัวเองเสมอ (กัน log คนอื่นรั่ว) — CEO ถึงจะ filter รายคนได้
           ...(ctx.user.role === "ENGINEER"
@@ -143,13 +143,13 @@ export const auditLogRouter = router({
           select: { id: true, name: true, color: true },
           orderBy: { id: "asc" },
         }),
-        ctx.prisma.auditLog.groupBy({
+        ctx.prisma.log.groupBy({
           by: ["action"],
           where: { createdAt: range, action: { in: SUMMARY_ACTIONS } },
           _count: { _all: true },
         }),
         // distinct userId ของ event login → รู้ว่า "ใคร" เข้าแล้ว (ไม่ใช่แค่กี่ครั้ง)
-        ctx.prisma.auditLog.findMany({
+        ctx.prisma.log.findMany({
           where: { createdAt: range, action: "auth.login" },
           distinct: ["userId"],
           select: { userId: true },
@@ -195,7 +195,7 @@ export const auditLogRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.auditLog.createMany({
+      await ctx.prisma.log.createMany({
         data: input.events.map((e) => ({
           userId: ctx.user.sub,
           action: e.action,

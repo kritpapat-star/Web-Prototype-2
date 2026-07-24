@@ -51,8 +51,8 @@ const auditMutation = t.middleware(async ({ ctx, type, path, getRawInput, next }
   const result = await next();
 
   // query ไม่ log (เสียงรบกวน) / mutation ที่ fail ไม่ log (ไม่มีอะไรเปลี่ยนใน DB)
-  // auditLog.track เขียน record คลิกของตัวเองแล้ว — ข้าม กันเขียน log ซ้อน (action="auditLog.track" ครอบ events)
-  if (type === "mutation" && result.ok && ctx.user && path !== "auditLog.track") {
+  // log.track เขียน record คลิกของตัวเองแล้ว — ข้าม กันเขียน log ซ้อน (action="log.track" ครอบ events)
+  if (type === "mutation" && result.ok && ctx.user && path !== "log.track") {
     try {
       // raw input ผ่าน zod ของ procedure มาแล้ว (result.ok) — แปลงผ่าน JSON ให้ Date เป็น ISO string
       const rawInput = await getRawInput();
@@ -67,7 +67,7 @@ const auditMutation = t.middleware(async ({ ctx, type, path, getRawInput, next }
         idOf(detail?.id) ?? // update/start/finish ส่ง id มาใน input
         idOf(data?.id); // create เพิ่งได้ id จากผลลัพธ์
 
-      await prisma.auditLog.create({
+      await prisma.log.create({
         data: { userId: ctx.user.sub, action: path, targetId, detail },
       });
     } catch (err) {
@@ -89,19 +89,21 @@ export const protectedProcedure = t.procedure
   })
   .use(auditMutation);
 
-// เฉพาะ ENGINEER (CEO ดูอย่างเดียว ห้าม mutate WorkPlan)
+// เฉพาะ ENGINEER
+// 24 ก.ค. 2026 (เจ้าของสั่ง): WorkPlan/site.create เปิดให้ CEO แล้ว (protectedProcedure + เช็ค ownership)
+// ชั้นนี้เหลือใช้กับ: ticket.accept (รับเป็นแผนงาน) + site.update/site.delete เท่านั้น
 export const engineerProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "ENGINEER") {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "เฉพาะ Engineer เท่านั้นที่แก้ไขแผนงานได้ (CEO ดูอย่างเดียว)",
+      message: "เฉพาะ Engineer เท่านั้น",
     });
   }
   return next({ ctx });
 });
 
-// เฉพาะ CEO — ใช้กับ query ฝั่งผู้บริหาร: auditLog.users + auditLog.summary (แถบสรุปหน้า log)
-// (auditLog.list ยังเปิดให้ทุก role โดย scope เป็นรายคนที่ query แทน)
+// เฉพาะ CEO — ใช้กับ query ฝั่งผู้บริหาร: log.users + log.summary (แถบสรุปหน้า log)
+// (log.list ยังเปิดให้ทุก role โดย scope เป็นรายคนที่ query แทน)
 export const ceoProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "CEO") {
     throw new TRPCError({

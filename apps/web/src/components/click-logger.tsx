@@ -8,7 +8,7 @@
 import { useEffect, useRef } from "react";
 import { trpc } from "../lib/trpc";
 
-// event ที่ buffer ไว้ก่อน flush — ตรงกับ input ของ auditLog.track
+// event ที่ buffer ไว้ก่อน flush — ตรงกับ input ของ log.track
 type ClickEvent = {
   action: string;
   targetId: string | null;
@@ -36,7 +36,7 @@ function tagOf(el: Element): string {
 }
 
 export function ClickLogger() {
-  const track = trpc.auditLog.track.useMutation();
+  const track = trpc.log.track.useMutation();
   const buffer = useRef<ClickEvent[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

@@ -15,6 +15,7 @@ import { typeColor } from "../lib/plan-types";
 import { TICKET_STATUS_META, type TicketStatus } from "../lib/ticket-status";
 import { fmtAppointment, fmtFullDate, parseDMY } from "../lib/format";
 import { dateOnlyICT } from "../lib/status";
+import { DatePicker } from "./date-picker";
 
 // โครงใบแจ้งซ่อมเท่าที่หน้าจอใช้ — ตรงกับ shape ของ ticket.list/todo (ticketInclude ฝั่ง API)
 export type TicketRow = {
@@ -302,28 +303,23 @@ export function AcceptModal({ ticket, onClose }: { ticket: TicketRow; onClose: (
         <div className="field-row">
           <label className="field">
             วันเริ่ม
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={start && !startISO ? "invalid" : undefined}
+            <DatePicker
               value={start}
-              onChange={(e) => setStart(e.target.value)}
-              required
+              onChange={setStart}
+              placeholder="dd/mm/yyyy"
+              invalid={!!(start && !startISO)}
+              aria-label="วันเริ่ม"
             />
           </label>
           <label className="field">
             วันจบ
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
-              className={end && (!endISO || rangeInvalid) ? "invalid" : undefined}
+            <DatePicker
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              required
+              onChange={setEnd}
+              placeholder="dd/mm/yyyy"
+              min={startISO ? start : undefined}
+              invalid={!!(end && (!endISO || rangeInvalid))}
+              aria-label="วันจบ"
             />
             {rangeInvalid && <span className="field-hint">วันจบต้องไม่ก่อนวันเริ่ม</span>}
           </label>

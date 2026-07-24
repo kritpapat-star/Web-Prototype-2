@@ -924,6 +924,181 @@ input {
   flex: 1;
 }
 
+/* ---------- ช่องวันที่กดเปิดปฏิทิน popover (date-picker.tsx) ----------
+   trigger หน้าตาเหมือน .field input + icon ปฏิทินทางขวา
+   popover เป็น absolute ใต้ trigger, z-index สูงกว่า .overlay/.modal (50) เพื่อใช้ใน modal ได้
+   .dp-backdrop คลุมจอจับคลิกนอก popover ปิด picker โดยไม่ปิด modal แม่ */
+
+.dp-root {
+  position: relative;
+  display: block;
+}
+
+.dp-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid #d9d9e3;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  color: #1f2333;
+}
+
+.dp-trigger:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+.dp-trigger:disabled {
+  background: #f3f3f8;
+  color: #9b9eac;
+  cursor: not-allowed;
+}
+
+.dp-placeholder {
+  color: #9b9eac;
+}
+
+.dp-icon {
+  flex-shrink: 0;
+  color: #7a7d8d;
+}
+
+.dp-trigger:disabled .dp-icon {
+  color: #c2c4d0;
+}
+
+.dp-trigger.invalid {
+  border-color: #e5484d;
+}
+
+.dp-trigger.invalid:focus {
+  outline-color: #f4b0b2;
+}
+
+.dp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.dp-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 61;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  background: #fff;
+  border: 1px solid #e7e7f0;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(20, 18, 60, 0.18);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dp-nav {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e0e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #55586a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dp-nav:hover {
+  background: #f3f3fb;
+}
+
+.dp-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2333;
+}
+
+.dp-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  color: #8a8d9c;
+}
+
+.dp-dow-sun {
+  color: #dc2626;
+}
+
+.dp-dow-sat {
+  color: #6250e5;
+}
+
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dp-cell {
+  height: 34px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #3f4252;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dp-cell:hover:not(:disabled) {
+  background: #f1effe;
+}
+
+.dp-cell.dp-empty {
+  background: transparent;
+  cursor: default;
+}
+
+.dp-cell.today {
+  color: #6d5ce8;
+  font-weight: 700;
+}
+
+.dp-cell.selected {
+  background: #6d5ce8;
+  color: #fff;
+  font-weight: 700;
+}
+
+.dp-cell.selected:hover {
+  background: #5a49d6;
+}
+
+.dp-cell.off {
+  color: #c2c4d0;
+  cursor: not-allowed;
+}
+
+
 /* กลุ่ม checkbox เลือกประเภทงาน (modal เพิ่มไซต์งาน) */
 .check-group {
   display: flex;
@@ -1345,4 +1520,286 @@ a.nav-item:not(.active):hover {
 /* banner เคสบน dashboard — สืบสไตล์หลักจาก .today-banner */
 .ticket-banner .banner-date a {
   color: inherit;
+}
+
+/* ---------- งานล่าช้า (หน้า /delays — CEO) ---------- */
+/* สไตล์สืบจาก .log-filter / .log-select / .log-table ที่มี เพื่อกลืนกับระบบ */
+
+.delay-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}
+
+.delay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #55586a;
+}
+
+.delay-select {
+  min-width: 150px;
+  padding: 7px 10px;
+  border: 1px solid #e0e0ea;
+  border-radius: 8px;
+  font-size: 13.5px;
+  background: #fff;
+  color: #33354a;
+}
+
+.delay-select:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+.delay-num {
+  width: 90px;
+  padding: 7px 10px;
+  border: 1px solid #e0e0ea;
+  border-radius: 8px;
+  font-size: 13.5px;
+  background: #fff;
+  color: #33354a;
+}
+
+.delay-num:focus {
+  outline: 2px solid #cfc8f7;
+  border-color: #6d5ce8;
+}
+
+.delay-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* สไลด์แบบ momentum บน iOS */
+}
+
+.delay-table {
+  width: 100%;
+  min-width: 1270px; /* กว้างเกินจอแคบ → wrapper สไลด์แนวนอนได้ (ไม่บีบคอลัมน์จนอ่านไม่ออก) */
+  border-collapse: collapse;
+  font-size: 13.5px;
+  table-layout: fixed; /* คุมความกว้างคอลัมน์จาก <th> แถวแรกให้สมดุล (ไม่ให้เนื้อหายาวดันคอลัมน์เพี้ยน) */
+}
+
+/* ความกว้างต่อคอลัมน์ (fixed layout อ่านจาก th แถวแรก) — px = อัตราส่วน ยืด/หดตามจอ */
+.delay-table th:nth-child(1) { width: 110px; } /* ล่าช้า (chip) */
+.delay-table th:nth-child(2) { width: 190px; } /* งาน */
+.delay-table th:nth-child(3) { width: 140px; } /* ผู้รับผิดชอบ */
+.delay-table th:nth-child(4) { width: 100px; } /* ไซต์ */
+.delay-table th:nth-child(5) { width: 110px; } /* ประเภทงาน */
+.delay-table th:nth-child(6) { width: 140px; } /* กำหนดเปิด-ปิด */
+.delay-table th:nth-child(7) { width: 140px; } /* เปิด-ปิดจริง */
+.delay-table th:nth-child(8) { width: 170px; } /* เริ่มช้า */
+.delay-table th:nth-child(9) { width: 170px; } /* จบช้า */
+
+.delay-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: #55586a;
+  font-size: 12.5px;
+  border-bottom: 1px solid #efeff5;
+  white-space: nowrap;
+}
+
+.delay-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f1f6;
+  vertical-align: top;
+}
+
+.delay-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* จำนวนวันล่าช้า — เน้นเล็กน้อยถัดจาก chip ชนิดล่าช้า */
+.delay-days {
+  font-size: 12.5px;
+  color: #b91c1c;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.delay-title {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* เลขรันงานหน้าชื่อ — จางไว้ให้ชื่อเด่นกว่า */
+.delay-ref {
+  color: #a0a3b1;
+  font-weight: 400;
+}
+
+/* เซลล์ผู้รับผิดชอบ — dot สีประจำคน (inline-flex ให้ .dot ซึ่งเป็น span แสดงจริง) */
+.delay-usercell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delay-date {
+  color: #55586a; /* ตัดบรรทัดได้ที่ " – " เพื่อคงคอลัมน์วันให้แคบสมดุล (วันเดี่ยวไม่แตกกลาง) */
+}
+
+.delay-empty {
+  color: #a0a3b1;
+  text-align: center;
+  padding: 24px 12px !important;
+}
+
+/* ลิงก์ไปหน้าไซต์จากในตาราง — ไม่ขีดเส้นใต้จนกว่าจะ hover กันตารางลายพร้อย */
+.delay-link {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.delay-link:hover {
+  text-decoration: underline;
+}
+
+/* คอลัมน์เหตุผลเริ่มช้า/จบช้า (แยกกัน) — ตัดคำข้อความยาวไม่ให้ดันตาราง (ความกว้างคุมที่ th) */
+.delay-reason {
+  word-break: break-word;
+}
+
+.delay-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #a0a3b1;
+}
+
+/* scorecard รายวิศวกร — การ์ดนับค้างรับ/เลยกำหนด (คลิก → filter รายคน) */
+.delay-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+
+.delay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid #e0e0ea;
+  border-radius: 12px;
+  background: #fff;
+  color: #33354a;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.delay-card:hover {
+  border-color: #cfc8f7;
+}
+
+.delay-card.active {
+  border-color: #6d5ce8;
+  box-shadow: 0 0 0 2px #e9e5fd;
+}
+
+/* การ์ด "ทั้งหมด" — แนวนอน compact กว่า (ไม่มี breakdown) */
+.delay-card-all {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.delay-card-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delay-card-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* ตัวเลขรวม — เน้นสีแดงให้เด่นเหมือน .delay-days */
+.delay-card-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: #b91c1c;
+  line-height: 1.1;
+}
+
+.delay-card-break {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+  color: #6b6f80;
+}
+
+.delay-card-accept,
+.delay-card-plan {
+  white-space: nowrap;
+}
+
+/* ---------- scorecard รายวิศวกร (การ์ดด้านบนตาราง) ---------- */
+/* ปุ่มที่ทำตัวเป็นการ์ด — กด → filter ตารางตามคนนั้น (.active = เลือกอยู่) */
+
+.delay-cards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.delay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 132px;
+  padding: 10px 14px;
+  border: 1px solid #e0e0ea;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.delay-card:hover {
+  border-color: #b7b2eb;
+}
+
+.delay-card.active {
+  border-color: #6d5ce8;
+  box-shadow: 0 0 0 2px #cfc8f7;
+}
+
+.delay-card-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: #33354a;
+}
+
+.delay-card-total {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: #b91c1c;
+}
+
+/* แจ้งยอดย่อย 2 ชนิดใต้ตัวเลขรวม — background/color มาจาก inline style (สีเดียวกับ chip ในตาราง) */
+.delay-card-sub {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.delay-card-pill {
+  display: inline-block;
+  min-width: 26px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
 }

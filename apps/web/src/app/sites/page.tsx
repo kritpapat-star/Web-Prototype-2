@@ -4,8 +4,9 @@
 // filter ประเภท + ค้นหา (ชื่อไซต์ / เลขไซต์ "12" หรือ "#5") ทำฝั่ง client ทั้งคู่ —
 //   site.list ส่งทั้งหมดทีเดียวอยู่แล้ว (ไซต์มีจำนวนน้อย) เปลี่ยน filter ไม่ต้อง refetch
 //   - มุมมองแผนงานรายเดือน/ค้นหาแผน (workPlan.list/search) ถูกย้ายออกจากหน้านี้แล้ว (11 ก.ค. 2026)
-//   - mutation เดียวในหน้านี้: ปุ่ม "+ ไซต์งาน" (Engineer เท่านั้น) → SiteModal สร้าง record ใน table sites
+//   - mutation เดียวในหน้านี้: ปุ่ม "+ ไซต์งาน" (ทุก role รวม CEO ตั้งแต่ 24 ก.ค. 2026) → SiteModal สร้าง record ใน table sites
 //     (สร้าง/แก้แผนงานยังทำที่ /dashboard เหมือนเดิม — แผนอ้างไซต์ผ่าน FK siteId → sites.id)
+//     ส่วนแก้ชื่อ/ลบไซต์ (หน้า /sites/[id]) ยัง Engineer เท่านั้น (เจ้าของขอเปิดเฉพาะ "เพิ่มไซต์")
 // ปุ่ม filter/label มาจาก type.list — สี chip มาจาก typeColor (คนละตำแหน่งกับ chip status)
 
 import { useEffect, useState } from "react";
@@ -47,8 +48,6 @@ export default function SitesPage() {
 
   if (!ready || me.isLoading) return <div className="center-note">กำลังโหลด…</div>;
   if (!me.data) return null; // ระหว่างเด้งกลับหน้า login
-
-  const isCEO = me.data.role === "CEO";
 
   // ชื่อประเภทจาก table types (id → name) — โหลดไม่ทัน/id ไม่รู้จัก → โชว์ id ไปก่อน
   const typeNameById = new Map((types.data ?? []).map((t) => [t.id, t.name]));
@@ -101,12 +100,10 @@ export default function SitesPage() {
           })}
         </div>
 
-        {/* สร้างไซต์งานใหม่ — Engineer เท่านั้น (site.create เป็น engineerProcedure, CEO view-only) */}
-        {!isCEO && (
-          <button className="btn-primary" onClick={() => setCreatingSite(true)}>
-            + ไซต์งาน
-          </button>
-        )}
+        {/* สร้างไซต์งานใหม่ — ทุก role รวม CEO (site.create เป็น protectedProcedure ตั้งแต่ 24 ก.ค. 2026) */}
+        <button className="btn-primary" onClick={() => setCreatingSite(true)}>
+          + ไซต์งาน
+        </button>
 
         <div className="search-row">
           <input
@@ -182,7 +179,7 @@ export default function SitesPage() {
   );
 }
 
-// ---------- modal สร้างไซต์งาน (Engineer เท่านั้น) ----------
+// ---------- modal สร้างไซต์งาน (ทุก role รวม CEO) ----------
 // ชื่อไซต์ + เลือกประเภทงานแบบ checkbox (หลายประเภทได้ — m-n กับ Type ต่างจากแผนที่มี 1 type)
 // สำเร็จแล้วโชว์เลขไซต์ที่ได้ + invalidate site.list ให้รายชื่อด้านหลัง refresh ทันที
 

@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "my-work", label: "งานของฉัน", href: "/dashboard", enabled: true },
   { key: "tickets", label: "แจ้งซ่อม", href: "/tickets", enabled: true },
   { key: "sites", label: "ไซต์งาน", href: "/sites", enabled: true },
+  { key: "delays", label: "งานล่าช้า", href: "/delays", enabled: true, ceoOnly: true },
   { key: "logs", label: "ประวัติการใช้งาน", href: "/logs", enabled: true },
   { key: "inventory", label: "คลังอุปกรณ์", enabled: false },
   { key: "borrow-return", label: "ยืม-คืน", enabled: false },

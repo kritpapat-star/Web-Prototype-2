@@ -3,7 +3,14 @@
 // วันสมมติอิง seed: วันนี้ = 2 ก.ค. 2026 (UTC midnight ตามที่ dateOnlyICT normalize แล้ว)
 
 import { describe, it, expect } from "vitest";
-import { planStatus, dateOnlyICT, countByStatus, sortByStatusPriority } from "./status";
+import {
+  planStatus,
+  dateOnlyICT,
+  countByStatus,
+  sortByStatusPriority,
+  planDelayKind,
+  planDelayDays,
+} from "./status";
 
 const TODAY = new Date("2026-07-02T00:00:00Z");
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -143,5 +150,133 @@ describe("sortByStatusPriority — เรียงรายการแผนต
 describe("dateOnlyICT (สูตรเดียวกับฝั่ง api)", () => {
   it("17:00Z = เที่ยงคืนไทยของวันถัดไป → เลื่อนวัน (จับ bug ±1)", () => {
     expect(dateOnlyICT(new Date("2026-07-01T17:00:00Z"))).toEqual(d("2026-07-02"));
+  });
+});
+
+// ชุดเคสเดียวกับ apps/api/src/lib/overdue.test.ts เป๊ะ — ล็อกว่า mirror 2 ฝั่งให้ผลตรงกัน
+// แก้สูตรฝั่งไหนแล้วอีกฝั่งไม่ตาม เทสชุดนี้จะแดง
+describe("planDelayKind (mirror จาก apps/api/src/lib/overdue.ts)", () => {
+  const T = d("2026-07-10");
+  const plan = (over: Partial<Parameters<typeof planDelayKind>[0]>) => ({
+    startDate: d("2026-07-01"),
+    endDate: d("2026-07-05"),
+    actStart: null as Date | null,
+    actEnd: null as Date | null,
+    ...over,
+  });
+
+  it("START_DUE: ยังไม่เริ่มเลย + startDate<today (แม้เลย endDate แล้วก็เป็นเลยกำหนดเริ่ม)", () => {
+    expect(planDelayKind(plan({}), T)).toBe("START_DUE");
+  });
+
+  it("END_DUE: เริ่มแล้ว ยังไม่จบ + endDate<today", () => {
+    expect(planDelayKind(plan({ actStart: d("2026-07-01") }), T)).toBe("END_DUE");
+  });
+
+  it("START_LATE: actStart>startDate แม้จบตรงเวลา", () => {
+    expect(planDelayKind(plan({ actStart: d("2026-07-02"), actEnd: d("2026-07-05") }), T)).toBe(
+      "START_LATE",
+    );
+  });
+
+  it("END_LATE: จบแล้วแต่ actEnd>endDate", () => {
+    expect(planDelayKind(plan({ actStart: d("2026-07-01"), actEnd: d("2026-07-08") }), T)).toBe(
+      "END_LATE",
+    );
+  });
+
+  it("end ชนะ start (เลยทั้งคู่ → END_LATE)", () => {
+    expect(planDelayKind(plan({ actStart: d("2026-07-03"), actEnd: d("2026-07-08") }), T)).toBe(
+      "END_LATE",
+    );
+  });
+
+  it("null: เริ่มตรงเวลา + จบตรงเวลา", () => {
+    expect(planDelayKind(plan({ actStart: d("2026-07-01"), actEnd: d("2026-07-05") }), T)).toBeNull();
+  });
+
+  it("null: startDate = today พอดี ยังไม่เริ่ม → ยังไม่ START_DUE (ตรงกับ NOT_STARTED)", () => {
+    expect(planDelayKind(plan({ startDate: T, endDate: d("2026-07-20") }), T)).toBeNull();
+  });
+
+  // actStart/actEnd จริงเป็น timestamp เต็ม ไม่ใช่เที่ยงคืน UTC — เทียบ ms ดิบจะทำให้
+  // แผนที่เริ่ม 8 โมงเช้าของวันที่วางแผนไว้กลายเป็น "เริ่มช้า" ทั้งที่ตรงวัน
+  it("เริ่ม 10:00 น. ไทยของวันที่วางแผนไว้ → ไม่ใช่ START_LATE", () => {
+    expect(
+      planDelayKind(
+        plan({ actStart: new Date("2026-07-01T03:00:00Z"), actEnd: d("2026-07-05") }),
+        T,
+      ),
+    ).toBeNull();
+  });
+
+  it("จบ 16:00 น. ไทยของวันครบกำหนด → ไม่ใช่ END_LATE", () => {
+    expect(
+      planDelayKind(
+        plan({
+          actStart: new Date("2026-07-01T03:00:00Z"),
+          actEnd: new Date("2026-07-05T09:00:00Z"),
+        }),
+        T,
+      ),
+    ).toBeNull();
+  });
+
+  it("boundary 17:00Z = เที่ยงคืนไทยของวันถัดไป → เป็น START_LATE (จับบั๊ก ±1)", () => {
+    expect(
+      planDelayKind(
+        plan({ actStart: new Date("2026-07-01T17:00:00Z"), actEnd: d("2026-07-05") }),
+        T,
+      ),
+    ).toBe("START_LATE");
+  });
+
+  it("ก่อน 17:00Z หนึ่งวินาที ยังเป็นวันเดิมตามเวลาไทย → ไม่ช้า", () => {
+    expect(
+      planDelayKind(
+        plan({ actStart: new Date("2026-07-01T16:59:59Z"), actEnd: d("2026-07-05") }),
+        T,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("planDelayDays (mirror จาก apps/api/src/lib/overdue.ts)", () => {
+  const T = d("2026-07-10");
+  const plan = (over: Partial<Parameters<typeof planDelayDays>[0]>) => ({
+    startDate: d("2026-07-01"),
+    endDate: d("2026-07-05"),
+    actStart: null as Date | null,
+    actEnd: null as Date | null,
+    ...over,
+  });
+
+  it("START_DUE: today − startDate", () => {
+    expect(planDelayDays(plan({}), T)).toBe(9);
+  });
+
+  it("END_DUE: today − endDate", () => {
+    expect(planDelayDays(plan({ actStart: d("2026-07-01") }), T)).toBe(5);
+  });
+
+  it("END_LATE: actEnd − endDate", () => {
+    expect(planDelayDays(plan({ actStart: d("2026-07-01"), actEnd: d("2026-07-08") }), T)).toBe(3);
+  });
+
+  it("START_LATE: actStart − startDate", () => {
+    expect(planDelayDays(plan({ actStart: d("2026-07-03"), actEnd: d("2026-07-05") }), T)).toBe(2);
+  });
+
+  it("actStart เป็น timestamp เต็ม → นับวันเป๊ะ ไม่ปัดเพี้ยน", () => {
+    expect(
+      planDelayDays(
+        plan({ actStart: new Date("2026-07-03T09:00:00Z"), actEnd: d("2026-07-05") }),
+        T,
+      ),
+    ).toBe(2);
+  });
+
+  it("ไม่ล่าช้า → 0", () => {
+    expect(planDelayDays(plan({ actStart: d("2026-07-01"), actEnd: d("2026-07-05") }), T)).toBe(0);
   });
 });

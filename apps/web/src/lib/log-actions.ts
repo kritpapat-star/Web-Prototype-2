@@ -12,7 +12,7 @@
 export type LogActionFilter = {
   code: string; // รหัสมาตรฐานที่ผู้ใช้เลือกใน dropdown
   label: string; // ป้ายไทย
-  match: string[]; // ค่า action ใน DB ที่นับเป็นประเภทนี้ (ส่งให้ auditLog.list เป็น input.actions)
+  match: string[]; // ค่า action ใน DB ที่นับเป็นประเภทนี้ (ส่งให้ log.list เป็น input.actions)
   logged: boolean; // ระบบมีการเขียน log ประเภทนี้แล้วหรือยัง
 };
 
@@ -51,6 +51,12 @@ export const LOG_ACTION_GROUPS: { label: string; items: LogActionFilter[] }[] = 
         code: "WORKPLAN_DELETED",
         label: "ลบแผนงาน",
         match: ["workPlan.delete", "WORKPLAN_DELETED"],
+        logged: true,
+      },
+      {
+        code: "WORKPLAN_DELAY_EXPLAINED",
+        label: "ระบุเหตุผลความล่าช้า",
+        match: ["workPlan.explainDelay", "WORKPLAN_DELAY_EXPLAINED"],
         logged: true,
       },
     ],
@@ -121,7 +127,7 @@ export const LOG_ACTION_GROUPS: { label: string; items: LogActionFilter[] }[] = 
   },
 ];
 
-// action ที่ "ซ่อนเสมอ" ในหน้า log — ส่งเป็น excludeActions ให้ auditLog.list ตอนไม่ได้กรองประเภท
+// action ที่ "ซ่อนเสมอ" ในหน้า log — ส่งเป็น excludeActions ให้ log.list ตอนไม่ได้กรองประเภท
 // เหตุผล: click telemetry ถี่มากจนกลบเหตุการณ์ทางธุรกิจ (สร้าง/ลบแผน, login) ที่ผู้บริหารมาหา
 export const DEFAULT_EXCLUDED_ACTIONS = ["ui.click"];
 

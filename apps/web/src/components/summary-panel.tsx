@@ -7,6 +7,7 @@
 import { trpc } from "../lib/trpc";
 import { planStatus, countByStatus, STATUS_META, type PlanStatus } from "../lib/status";
 import { fmtDayMonth, fmtFullDate } from "../lib/format";
+import { DelayTag } from "./delay-tag";
 
 // ลำดับ: งานที่ต้องรีบขึ้นก่อน → งานปกติ → เสร็จแล้ว (ลำดับเดียวกับ banner สิ่งที่ต้องทำ)
 const SUMMARY_ORDER: PlanStatus[] = [
@@ -70,7 +71,10 @@ export function SummaryPanel({ today, isCEO }: { today: Date; isCEO: boolean }) 
                   <div key={plan.id} className="plan-row">
                     <span className="dot" style={{ background: plan.user.color }} />
                     <div className="plan-main">
-                      <div className="plan-name">{plan.name}</div>
+                      <div className="plan-name">
+                        {plan.name}
+                        <DelayTag plan={plan} today={today} />
+                      </div>
                       <div className="plan-sub">
                         {isCEO && <>{plan.user.name} · </>}
                         {fmtDayMonth(plan.startDate)} – {fmtDayMonth(plan.endDate)}
